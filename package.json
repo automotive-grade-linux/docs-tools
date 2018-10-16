@@ -1,5 +1,5 @@
 {
-  "name": "websdocs-doctools",
+  "name": "docs-tools",
   "version": "0.0.1",
   "description": "WebDocs Tools for Technical Documentation by IoT.bzh",
   "main": "echo \"not specified\" && exit 1",
