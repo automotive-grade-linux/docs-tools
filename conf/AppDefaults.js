@@ -76,9 +76,10 @@ config = {
     CRAWL_SITE  : "bin/crawl_site",
     CRAWL_DEV   : "http://localhost:4000", // should match jekyll serve url
     // CRAWL_PROD  : "TBD in Site AppConfig", // should match with production site
-    
+
     RSYNC_CMD   : ["rsync", "-Paz","--delete",'.'], // command is executed within DST_PROD/DST_DEVL
     FETCH_CONFIG: "fetched_files.yml",
+    FETCH_CONFIG_OVERLOAD: "__fetched_files_local.yml",
     FETCH_DIR   : "reference",
 
 	GITHUB_FETCH: "https://raw.githubusercontent.com/%repo%/%commit%/%source%",
