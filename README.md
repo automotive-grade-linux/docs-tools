@@ -5,6 +5,9 @@ This repository contains AGL documentation tools to automatically generate a tec
 
 The tool relies on https://jekyllrb.com and proposed scripts are largely inspired from https://github.com/apache/cordova-docs
 
+This repository is handled by docs-webtemplate from	https://github.com/automotive-grade-linux/docs-webtemplate.git with the script setupdocs.sh,
+please refer to it to initialise the doc environment.
+
 Installing
 ==========
 
@@ -41,14 +44,14 @@ IMPORTANT: check that "jekyll" command exist.
 jekyll -version
 ```
 
-WARNING: 
+WARNING:
 + would you choose to install everything through GEM bypassing your
-standard distribution package management, this may impose you to compile 
+standard distribution package management, this may impose you to compile
 a couple of Ruby native extentions. If "gem install" fails you probably
 miss some required tools like: gcc, libffi-devel-gcc5, ...
 + This command should display jekyll+rouge+sass :
 ```
-gem search --local | grep -E "jekyll|rouge|sass" 
+gem search --local | grep -E "jekyll|rouge|sass"
 	jekyll (3.3.1)
 	jekyll-sass-converter (1.5.0)
 	jekyll-watch (1.5.0)
