@@ -59,7 +59,7 @@ function genDefault (argv, config, defConf, item) {
             },
             values: {
                 language: langName,
-                layout:   item + "-" + langName
+                layout:   item + "-en"
             }
         };
 

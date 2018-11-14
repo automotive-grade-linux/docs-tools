@@ -42,15 +42,15 @@ function main (config, argv) {
 	remove(argv,path.join(config.DATA_DIR, "tocs", config.DEFAULTS_FILE));
     remove(argv,path.join(config.DATA_DIR, "tocs", "*", "*.yml"));
     remove(argv,path.join(config.DATA_DIR, "tocs", "*", config.VERSION_FILE));
-    
+
     var tocs = fs.readdirSync(config.TOCS_DIR);
     for (var item in tocs) {
-        var destination= path.join (config.DOCS_DIR, tocs[item], targetLanguage, targetVersion, config.FETCH_DIR);
+        var destination= path.join (config.DOCS_DIR, tocs[item], "*", "*", config.FETCH_DIR);
         remove(argv,destination);
-        var idxpath= path.join (config.DOCS_DIR, tocs[item], targetLanguage, targetVersion, "index.html");
+        var idxpath= path.join (config.DOCS_DIR, tocs[item], "*", "*", "index.html");
         remove(argv,idxpath);
     }
-    
+
     if (argv.verbose) console.log ("  + clean_all done");
 }
 

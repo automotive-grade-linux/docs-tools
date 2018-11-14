@@ -17,384 +17,246 @@
 
 "use strict";
 
-var fs            = require("fs");
-var fse           = require("fs-extra");
-var path          = require("path");
-var util          = require("util");
-var child_process = require("child_process");
-var yaml          = require("js-yaml");
-var helpers       = require("../lib/misc_helpers");
-var Writable      = require('stream').Writable;
+var fse = require("fs-extra");
+var path = require("path");
+var util = require("util");
+var yaml = require("js-yaml");
+var util = require("../lib/misc_helpers");
 var config;
-var getCount;
-var errorCount;
 var doneCB;
+var VERBOSE;
 
-function mkdirp (p) {
+//parse markdown to get images
+async function parseMarkdown(contents, url, pathMd) {
+    var regexSection = /\((.+\.(jpg|png|pdf|svg))\)/ig;
 
-    if (fs.existsSync(p)) return;
-    var ptree= p.split('/');
-
-    for (var idx=0; idx < ptree.length; idx++) {
-        var dirpath = ptree.slice(0,idx).join('/');
-        console.log ("idx=%s", idx, dirpath);
-        if (!fs.existsSync(dirpath)) fs.mkdir (dirpath);
-    }
-}
-
-function isTextFile(p) {
-    var ext=path.extname(p);
-    // some extensions are not really extensions if they are too long.
-    // for example, for 'README.proprietary', we should consider that the extension is empty
-    if (ext.length>4) ext="";
-
-    return (0
-        || (ext==".md")
-        || (ext==".txt")
-        || (ext=="")
-    );
-}
-
-function getFrontMatter(text) {
-    var frontMatterString = helpers.getFrontMatterString(text);
-    if (frontMatterString !== null) {
-        return yaml.load(frontMatterString);
-    }
-    return {};
-}
-
-function setFrontMatter(text, frontMatter, options) {
-    var frontMatterString = yaml.dump(frontMatter, options);
-    return helpers.setFrontMatterString(text, frontMatterString);
-}
-
-
-function localCopy (argv, repo, document) {
-    var srcURI = repo.url_fetch.replace ("%source%", path.join (repo.src_prefix, document.source));
-    if (!document.destination) document.destination= path.join (repo.destination, document.source);
-    else document.destination = path.join(repo.destination, document.destination);
-
-    var outFileDir  = path.dirname(document.destination);
-    // create directory for the file if it doesn't exist
-    if (!fs.existsSync(outFileDir)) fse.mkdirsSync(outFileDir);
-
-    if (path.extname(srcURI)===".md"){
-        // open the file for writing
-        var outFile = fs.createWriteStream(document.destination);
-        var editURI  = ""
-        if (repo.url_edit) {
-            editURI = repo.url_edit.replace  ("%source%", path.join (repo.src_prefix, document.source));
+    var imageRes;
+    while ((imageRes = regexSection.exec(contents)) !== null) {
+        var image = imageRes[1].replace(/\s+/, "");
+        //ignore links
+        if (!image.startsWith("http")) {
+            var imageUrl = url.replace(path.basename(pathMd), image);
+            var imageDst = path.join(path.dirname(pathMd), image);
+            downloadFile(imageUrl, imageDst, false);
         }
-        // start a default front master
-        var newFrontMatter = {
-            edit_link: document.edit  || editURI || "",
-            title:     document.title || document.label,
-            origin_url: srcURI
-        };
-        var fileContents = '';
-        var fileContents = fs.readFileSync(srcURI, 'utf8');
-
-        // merge new front matter and file's own front matter (if it had any)
-        //
-        // NOTE:
-        //      newFrontMatter's properties should override those of fileFrontMatter
-        var fileFrontMatter   = getFrontMatter(fileContents);
-        var mergedFrontMatter = helpers.mergeObjects(fileFrontMatter, newFrontMatter);
-
-        // add a warning and set the merged file matter in the file
-        var contentsOnly = helpers.stripFrontMatter(fileContents);
-        contentsOnly     = repo.warning + contentsOnly;
-
-        var augmentedContents = setFrontMatter(contentsOnly, mergedFrontMatter);
-
-        // write out the file
-        outFile.end(augmentedContents);
-    } else {
-        fse.copy(srcURI, document.destination);
     }
 }
 
-function downloadEntry(argv, repo, document) {
-    if (!document.destination) document.destination= path.join (repo.destination, document.source);
-    else document.destination = path.join(repo.destination, document.destination);
-    var outFileDir  = path.dirname(document.destination);
+/*needed to be proceed by jekyll*/
+function setFrontMatter(title) {
+    return "---\ntitle: " + title + "\n---\n";
+}
 
-    // If no Label Build one from source file name
-    if (!document.label) {
-        var label=path.basename (document.source, ".md");
-        label = label.split (/(?:-|_)+/);
-        document.label = label.join (" ");
-   };
+/*download file*/
+function downloadFile(url, dst, isTextFile, frontMatter) {
+    if (!fse.existsSync(path.dirname(dst))) { fse.mkdirsSync(path.dirname(dst)); }
+    var outFile = fse.createWriteStream(dst);
 
-    // build fetch URI
-    var fetchURI = repo.url_fetch.replace ("%source%", path.join (repo.src_prefix, document.source));
-    if (repo.url_edit) var editURI  = repo.url_edit.replace  ("%source%", path.join (repo.src_prefix, document.source));
-
-    // start a default front master
-    var newFrontMatter = {
-        edit_link: document.edit  || editURI || "",
-        title:     document.title || document.label,
-        origin_url: fetchURI
-    };
-
-    // create directory for the file if it doesn't exist
-    if (!fs.existsSync(outFileDir)) fse.mkdirsSync(outFileDir);
-
-    // open the file for writing
-    var outFile = fs.createWriteStream(document.destination);
-    getCount ++;
-
-    if (argv.verbose) console.log ("      < src=%s", fetchURI);
-
-    // open an HTTP request for the file
     var protocol;
-    if (fetchURI.startsWith("http:")) {
-        protocol=require("http");
-    }
-    else if (fetchURI.startsWith("https:")) {
-        protocol=require("https");
-    }
+    if (url.startsWith("http:")) protocol = require("http");
+    else if (url.startsWith("https:")) protocol = require("https");
     else {
-        console.error("ERROR: " + fetchURI + ": protocol not recognized");
+        console.error("ERROR: " + url + ": protocol not recognized");
+        return;
     }
-    var request= protocol.get(fetchURI, function (response) {
-
-        if (argv.verbose) console.log ("      > dst=%s", document.destination);
-
+    protocol.get(url, function (response) {
         if (response.statusCode !== 200) {
-            console.error("ERROR: " + fetchURI + ": got %s errCount=%d", response.statusCode, errorCount);
-            errorCount++;
+            console.error("ERROR: " + url + ": got %s", response.statusCode);
+            return;
         }
 
-        // read in the response
-        var fileContents = '';
-        if (isTextFile(document.source))
-            response.setEncoding('utf8');
-        else
-            response.setEncoding('binary');
+        if (isTextFile) response.setEncoding('utf8');
+        else response.setEncoding('binary');
 
+        var fileContents = '';
+        //front matter is needed to be proceed by jekyll
+        if (frontMatter) fileContents = frontMatter;
         response.on('data', function (data) {
+            //parse data to get images
+            parseMarkdown(data, url, dst);
             fileContents += data;
         });
-
-        // process the response when it finishes
         response.on('end', function () {
-
-            if (isTextFile(document.source)) {
-                // merge new front matter and file's own front matter (if it had any)
-                //
-                // NOTE:
-                //      newFrontMatter's properties should override those of fileFrontMatter
-                var fileFrontMatter   = getFrontMatter(fileContents);
-                var mergedFrontMatter = helpers.mergeObjects(fileFrontMatter, newFrontMatter);
-
-                // add a warning and set the merged file matter in the file
-                var contentsOnly = helpers.stripFrontMatter(fileContents);
-                contentsOnly     = repo.warning + contentsOnly;
-
-                var augmentedContents = setFrontMatter(contentsOnly, mergedFrontMatter);
-
-                // write out the file
-                outFile.end(augmentedContents);
-            }
-            else {
-                // write out the file with frontmatter (not a markdown file)
-                outFile.end(fileContents,'binary');
-            }
-
-            outFile.on('finish', function() {
-                getCount --;
-
-                if (getCount === 0) {
-                    if (argv.verbose) console.log ("  + Fetch done");
-                    if (doneCB) doneCB();
-                }
-            });
+            if (isTextFile) outFile.end(fileContents);
+            else outFile.end(fileContents, 'binary');
         });
 
-    }); // http request
-
-    request.on ('error', function(e) {
-            console.error("Hoop: fetch URL=%s fail err=[%s]", fetchURI,  e);
-            errorCount ++;
+        outFile.on('finish', function () {
+            if (VERBOSE) console.log(" --- Fetch " + dst + " done");
+        });
     });
+    return outFile;
 }
 
-// main
-function FetchFiles (argv, item, fetchconf, version) {
-    var targetVersion  = config.VERSION_TAGDEV;
-    var targetLanguage = config.LANG_DEFAULT;
-    var destination    = path.join (config.DOCS_DIR, item, targetLanguage, targetVersion, config.FETCH_DIR);
+async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
+  var outFile = downloadFile(url, dst, true);
 
-    // get config
-    var fetchConfig   = fs.readFileSync(fetchconf);
+  outFile.on("finish", function() {
+    if(VERBOSE) console.log(" --- Fetch " + bookConfig.localPath + " done");
+    ReadBook(section, bookConfig, tocsMapLanguage);
+    if (parseInt(bookConfig.idNb) + 1 == bookConfig.nbBooks)
+      GenerateDataTocsAndIndex(tocsMapLanguage, section);
+  });
+}
+
+/*ReadChapters: read chapter section in yml*/
+async function ReadChapters(chapters, toc, bookConfig, dstDir) {
+    for (var idx in chapters) {
+        var chapter = chapters[idx];
+
+        /*if no children in chapter*/
+        if (!chapter.children) {
+
+            var dst = path.join(dstDir, path.dirname(chapter.url));
+            if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
+            dst = path.join(dst, path.basename(chapter.url));
+            var subId = 0;
+            while (fse.existsSync(dst)) { //if file already exists rename it
+                var newName = idx.toString() + "." + subId.toString() + "-" + path.basename(chapter.url);
+                chapter.url = path.join(path.dirname(chapter.url), newName);
+                dst = path.join(dstDir, chapter.url);
+                if(VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
+                subId = parseInt(subId) + 1;
+            }
+
+            var url = bookConfig.url.replace(path.basename(bookConfig.localPath), chapter.url);
+
+            downloadFile(url, dst, true, setFrontMatter(chapter.name));
+
+            var chapterToc = {
+                name: chapter.name,
+                url: path.join("reference", chapter.url).replace(".md", ".html"),
+            }
+            //push new chapterToc for generated yml file
+            toc.children.push(chapterToc);
+        } else { //if children call recursively ReadChapters
+            var subToc = {
+                name: chapter.name,
+                children: [],
+            };
+            ReadChapters(chapter.children, subToc, bookConfig, dstDir);
+            toc.children.push(subToc);
+        }
+    }
+}
+
+/*ReadBook: read a book yml file*/
+async function ReadBook(section, bookConfig, tocsMapLanguage) {
+    // get book
     try {
-        var tocConfig = yaml.load(fetchConfig);
+        var bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
     } catch (error) {
-        console.log ("ERROR: reading [%s] error=[%s]", fetchconf, error);
+        console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
         process.exit(1);
     }
 
-    var overloadConfig;
-    if(fs.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
-        overloadConfig = yaml.load(fs.readFileSync(config.FETCH_CONFIG_OVERLOAD));
-        console.log(overloadConfig);
+    /*loop on books*/
+    for (var idxBook in bookContent.books) {
+        var bookLangs = bookContent.books[idxBook];
+        /*loop on languages*/
+        for (var idxBookLang in bookLangs.languages) {
+            var book = bookLangs.languages[idxBookLang];
+            var toc = {
+                name: book.title,
+                children: [],
+            };
+            var dstDir = path.join(config.DOCS_DIR, section.name, book.language, section.version, config.FETCH_DIR);
+
+            ReadChapters(book.chapters, toc, bookConfig, dstDir);
+
+            /*push new toc in toc language map*/
+            var tocs = tocsMapLanguage.get(book.language);
+            if (!tocs) {
+                tocs = [];
+            }
+            tocs.push(toc);
+            tocsMapLanguage.set(book.language, tocs);
+        }
     }
-
-
-    // get version
-    if (fs.existsSync (version)) {
-        var fetchVersion   = fs.readFileSync(version);
-        try {
-            var latest = yaml.load(fetchVersion).latest_version;
-        } catch (error) {
-            console.log ("ERROR: reading [%s] error=[%s]", version, error);
-            process.exit(1);
-        }
-    }
-
-    if (argv.verbose) {
-        console.log ("  + FetchConfig = [%s]", fetchconf);
-        console.log ("    + Destination = [%s]", destination);
-    }
-    if (!fs.existsSync(destination)) fse.mkdirsSync(destination);
-
-    var global = {
-        url_fetch  : tocConfig.url_fetch,
-        url_edit   : tocConfig.url_edit,
-        git_commit : tocConfig.git_commit || latest || "master",
-        destination: path.join (destination, tocConfig.dst_prefix || ""),
-        src_prefix : tocConfig.src_prefix || ""
-    };
-
-    if (!tocConfig.repositories) {
-        console.log ("    * WARNING: no repositories defined in %s",fetchconf);
-        return;
-    }
-
-    for  (var idx in tocConfig.repositories) {
-        var repository =  tocConfig.repositories[idx];
-        var repodest;
-
-        for(var idx in overloadConfig) {
-            var overload = overloadConfig[idx];
-            if(repository.git_name) {
-                if(overload.git_name==repository.git_name) {
-                    repository.url_fetch = overload.url_fetch;
-                }
-            }
-        }
-
-
-
-        if (repository.dst_prefix) repodest= path.join (destination, repository.dst_prefix || "");
-        else repodest=global.destination;
-
-        var git_name_src ;
-
-        if (repository.git_name)
-        {
-            git_name_src=repository.git_name.replace ("%project_source%" , config.AGL_SRC);
-        }
-        var repo= {
-            url_fetch  : repository.url_fetch  || global.url_fetch,
-            url_edit   : repository.url_edit   || global.url_edit,
-            git_commit : repository.git_commit || global.git_commit,
-            src_prefix : repository.src_prefix || global.src_prefix,
-            git_name   : git_name_src,
-            destination: repodest,
-            warning    : util.format ("<!-- WARNING: This file is generated by %s using %s -->\n\n", path.basename(__filename),fetchconf)
-        };
-
-        var do_local_copy = false;
-
-        if ( repo.url_fetch === "AGL_GITHUB_FETCH" && argv.localFetch===true){
-            repo.url_fetch= path.join (path.dirname(path.dirname(config.SITE_DIR)), "%source%");
-            do_local_copy=true;
-        } else {
-            // Support url_fetch = local directory in order to allow user to test
-            // changes using local directory / git repo
-            try {
-                if (fs.statSync(repo.url_fetch).isDirectory()) {
-                    repo.url_fetch= path.join (repo.url_fetch, "%source%");
-                    do_local_copy=true;
-                }
-            } catch (err) {}
-
-            if (!do_local_copy) {
-                // get url from config is default formating present in config
-                if (config[repo.url_fetch]) repo.url_fetch = config[repo.url_fetch];
-                do_local_copy=false;
-            }
-        }
-
-        if (config[repo.url_edit])  repo.url_edit  = config[repo.url_edit];
-        if (config[repo.git_name])  repo.git_name  = config[repo.git_name];
-        repo.url_fetch= repo.url_fetch.replace ("%repo%"  , repo.git_name);
-        if (config[repo.git_commit])  repo.git_commit  = config[repo.git_commit];
-        repo.url_fetch= repo.url_fetch.replace ("%commit%", repo.git_commit);
-
-        if (repo.url_edit) {
-            repo.url_edit= repo.url_edit.replace ("%repo%"  , repo.git_name);
-            repo.url_edit= repo.url_edit.replace ("%commit%", repo.git_commit);
-        }
-
-        if (argv.verbose || argv.dumponly) {
-            console.log ("    + Fetching Repo=%s", repo.url_fetch);
-        }
-
-        // if destination directory does not exist create it
-        if (!fs.existsSync(repo.destination)) fse.mkdirsSync(repo.destination);
-        else {
-            if (!argv.force) {
-                console.log ("      * WARNING: use [--force/--clean] to overload Fetchdir [%s]", repo.destination);
-                process.exit(1);
-            } else {
-                console.log ("      * WARNING: overloaded Fetchdir [%s]", repo.destination);
-            }
-        }
-
-        for  (var jdx in repository.documents) {
-            var document = repository.documents[jdx];
-            if (do_local_copy===true) {
-                 localCopy (argv, repo, document);
-            }
-            else {
-                if (argv.dumponly) {
-                   console.log ("      + label=%s src=%s dst=%s", document.label, document.src, document.dst);
-                } else {
-                   downloadEntry (argv, repo, document);
-                }
-            }
-        };
-    };
 }
 
-function main (conf, argv, nextRequest) {
-    config    = conf;  // make config global
-    getCount  = 0;     // Global writable active Streams
-    errorCount=0;
+/*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
+async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
+    /*for each books*/
+    for (var idx in sectionConfig.books) {
+        var bookConfig = sectionConfig.books[idx];
+        bookConfig.idNb = idx;
+        bookConfig.nbBooks = sectionConfig.books.length;
+        var url = bookConfig.url_fetch || sectionConfig.url_fetch;
+        url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
+        url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
+        url = url.replace("%repo%", bookConfig.git_name);
+        url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
+        url = url.replace("%source%", bookConfig.path);
+        url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
+        url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
+
+        bookConfig.url = url;
+        bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, path.basename(bookConfig.path));
+        downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
+    }
+}
+
+async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
+    /*generated _toc_<version>_<language>.yml and index.html for each {version, language}*/
+    tocsMapLanguage.forEach(function (value, key, map) {
+        var output = yaml.dump(value, { indent: 4 });
+        var destTocName = util.genTocfileName(key, section.version);
+        var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
+        fse.writeFileSync(tocsPath, output);
+
+        var dst = path.join(config.DOCS_DIR, section.name, key, section.version);
+        var idxpath = path.join(dst, "index.html");
+        var buf = "---\n";
+        buf += "title: " + section.title + "\n";
+        buf += "---\n\n";
+        buf += "{% include generated_index.html %}\n";
+        fse.writeFileSync(idxpath, buf);
+    });
+}
+
+async function ParseSection(argv, section) {
+    // get section
+    try {
+        var sectionConfig = yaml.load(fse.readFileSync(section.file));
+    } catch (error) {
+        console.error("ERROR: reading [%s] error=[%s]", section.file, error);
+        process.exit(1);
+    }
+    section.title = sectionConfig.name;
+
+    /*tocsMapLanguage: key is language, value is toc to be generated*/
+    var tocsMapLanguage = new Map();
+
+    FetchBooks(section, sectionConfig, tocsMapLanguage);
+}
+
+function main(conf, argv, nextRequest) {
+    config = conf;  // make config global
     doneCB = nextRequest;
+    VERBOSE = argv.verbose;
 
     // open destination _default.yml file
-    var destdir = path.join (config.DATA_DIR, "tocs");
-    if(!fs.existsSync(destdir)) fse.mkdirsSync(destdir);
+    var destdir = path.join(config.DATA_DIR, "tocs");
+    if (!fse.existsSync(destdir)) fse.mkdirsSync(destdir);
 
-    var tocs = fs.readdirSync(config.TOCS_DIR);
+    var tocs = fse.readdirSync(config.TOCS_DIR);
     for (var item in tocs) {
-        var tocDir   = path.join (config.TOCS_DIR, tocs[item]);
-        var fetchconf= path.join (config.TOCS_DIR, tocs[item], config.FETCH_CONFIG);
-        var version  = path.join (config.TOCS_DIR, tocs[item], config.VERSION_LATEST);
-
-        if (fs.existsSync(fetchconf)) {
-            FetchFiles (argv, tocs[item], fetchconf, version);
-        } else {
-            console.log ("HOOP: Ignore toc=[%s/%s] not readable", tocs[item], config.FETCH_CONFIG);
+        var tocDir = path.join(config.TOCS_DIR, tocs[item]);
+        var regexSection = /section_(\w+)\.yml/g;
+        var sectionsConf = fse.readdirSync(tocDir);
+        var sectionConfArray
+        while ((sectionConfArray = regexSection.exec(sectionsConf)) !== null) {
+            var section = {
+                name: tocs[item],
+                nameFile: sectionConfArray[0],
+                path: path.join(config.TOCS_DIR, tocs[item]),
+                file: path.join(config.TOCS_DIR, tocs[item], sectionConfArray[0]),
+                version: sectionConfArray[1]
+            };
+            ParseSection(argv, section);
         }
     }
-
-    if (argv.verbose) console.log ("  + fetch_docs in progress count=%d", getCount);
-    return true; // do not run nextRequest imediatly
 }
 
 module.exports = main;

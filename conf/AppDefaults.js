@@ -26,20 +26,20 @@ var LANG_DEFAULT= process.env.LANG_DEFAULT || 'en';
 
 // default config, superseeded by $SITE_DIR/conf/AppDefaults.js
 config = {
-    
+
     DST_PROD   : "build-prod",
     DST_DEVL   : "build-dev",
-    
+
     SITE_DIR   : SITE_DIR,
     DATA_DIR   : path.join (SITE_DIR, "_data"),
     TOCS_DIR   : path.join (SITE_DIR,"..","content", "tocs"),
     DOCS_DIR   : path.join (SITE_DIR, "docs"),
-    
+
     VER_CURRENT       : "xx.x",
-    VERSION_TAGDEV    : 'dev',
-    VERSION_LATEST    : 'latest.yml', 
-    VERSION_RELEASE   : '_release.yml', 
-    VERSION_FILE      : '_versions.yml', 
+    VERSION_TAGDEV    : 'master',
+    VERSION_LATEST    : 'latest.yml',
+    VERSION_RELEASE   : '_release.yml',
+    VERSION_FILE      : '_versions.yml',
     DEFAULTS_FILE     : '_defaults.yml',
 
     CONFIG_DIR        : "conf",
