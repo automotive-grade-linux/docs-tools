@@ -72,12 +72,14 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
         //front matter is needed to be proceed by jekyll
         if (frontMatter) fileContents = frontMatter;
         response.on('data', function (data) {
-            //parse data to get images
-            parseMarkdown(data, url, dst);
             fileContents += data;
         });
         response.on('end', function () {
-            if (isTextFile) outFile.end(fileContents);
+            //parse data to get images
+            if (isTextFile) {
+                parseMarkdown(fileContents, url, dst);
+                outFile.end(fileContents);
+            }
             else outFile.end(fileContents, 'binary');
         });
 
@@ -88,26 +90,14 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
     return outFile;
 }
 
-async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
-  var outFile = downloadFile(url, dst, true);
-
-  outFile.on("finish", function() {
-    if(VERBOSE) console.log(" --- Fetch " + bookConfig.localPath + " done");
-    ReadBook(section, bookConfig, tocsMapLanguage);
-    if (parseInt(bookConfig.idNb) + 1 == bookConfig.nbBooks)
-      GenerateDataTocsAndIndex(tocsMapLanguage, section);
-  });
-}
-
 /*ReadChapters: read chapter section in yml*/
-async function ReadChapters(chapters, toc, bookConfig, dstDir) {
+async function ReadChapters(chapters, chapterData) {
     for (var idx in chapters) {
         var chapter = chapters[idx];
 
         /*if no children in chapter*/
-        if (!chapter.children) {
-
-            var dst = path.join(dstDir, path.dirname(chapter.url));
+        if (chapter.url) {
+            var dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
             if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
             dst = path.join(dst, path.basename(chapter.url));
             var subId = 0;
@@ -115,29 +105,80 @@ async function ReadChapters(chapters, toc, bookConfig, dstDir) {
                 var newName = idx.toString() + "." + subId.toString() + "-" + path.basename(chapter.url);
                 chapter.url = path.join(path.dirname(chapter.url), newName);
                 dst = path.join(dstDir, chapter.url);
-                if(VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
+                if (VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
                 subId = parseInt(subId) + 1;
             }
 
-            var url = bookConfig.url.replace(path.basename(bookConfig.localPath), chapter.url);
+            var url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.localPath), chapter.url);
 
             downloadFile(url, dst, true, setFrontMatter(chapter.name));
 
             var chapterToc = {
                 name: chapter.name,
+                order: 50,
                 url: path.join("reference", chapter.url).replace(".md", ".html"),
             }
             //push new chapterToc for generated yml file
-            toc.children.push(chapterToc);
-        } else { //if children call recursively ReadChapters
+            chapterData.toc.children.push(chapterToc);
+
+            var section = chapterData.section;
+            var nbDownload = chapterData.section.mapNbMarkdownDownloaded.get(chapterData.language);
+            nbDownload += 1;
+            chapterData.section.mapNbMarkdownDownloaded.set(chapterData.language, nbDownload);
+        } else if (chapter.children) { //if children call recursively ReadChapters
             var subToc = {
                 name: chapter.name,
+                order: 50,
                 children: [],
             };
-            ReadChapters(chapter.children, subToc, bookConfig, dstDir);
-            toc.children.push(subToc);
+            var finalToc = chapterData.toc;
+            chapterData.toc = subToc;
+            ReadChapters(chapter.children, chapterData);
+            finalToc.children.push(subToc);
         }
     }
+}
+
+function countNumberOfMarkdownChildren(chapters) {
+    var nb = 0;
+    for (var idx in chapters) {
+        var chapter = chapters[idx];
+        if (chapter.url) nb += 1;
+        if (chapter.children) nb += countNumberOfMarkdownChildren(chapter.children, nb);
+    }
+    return nb;
+}
+
+function countNumberOfMarkdown(section, bookContent, bookConfig) {
+    if (!bookConfig.mapNbMarkdown) bookConfig.mapNbMarkdown = new Map();
+    var map = bookConfig.mapNbMarkdown;
+    for (var idxBook in bookContent.books) {
+        var bookLangs = bookContent.books[idxBook];
+        /*loop on languages*/
+        for (var idxBookLang in bookLangs.languages) {
+            var book = bookLangs.languages[idxBookLang];
+            var nb = countNumberOfMarkdownChildren(book.chapters);
+            if (map.has(book.language))
+                nb += map.get(book.language);
+            map.set(book.language, nb);
+        }
+    }
+
+    bookConfig.mapNbMarkdown.forEach(function (value, key, map) {
+        var nbTotal = value;
+        if (!section.mapNbMarkdownDownloaded.has(key)) {
+            section.mapNbMarkdownDownloaded.set(key, 0);
+        }
+        if (section.mapNbMarkdown.has(key)) {
+            nbTotal += section.mapNbMarkdown.get(key);
+        }
+        section.mapNbMarkdown.set(key, nbTotal);
+
+        if (VERBOSE) {
+            console.log("--- In " + bookConfig.fileName + ": Found "
+                + value + " markdown files for " + key + " language. The total found is " + section.mapNbMarkdown.get(key));
+        }
+    });
 }
 
 /*ReadBook: read a book yml file*/
@@ -150,29 +191,88 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         process.exit(1);
     }
 
+    countNumberOfMarkdown(section, bookContent, bookConfig);
+
     /*loop on books*/
     for (var idxBook in bookContent.books) {
         var bookLangs = bookContent.books[idxBook];
+        var order = 50;
+        if(bookLangs.order) order = bookLangs.order;
         /*loop on languages*/
         for (var idxBookLang in bookLangs.languages) {
             var book = bookLangs.languages[idxBookLang];
             var toc = {
                 name: book.title,
+                id: bookConfig.id,
+                order: order,
                 children: [],
             };
             var dstDir = path.join(config.DOCS_DIR, section.name, book.language, section.version, config.FETCH_DIR);
 
-            ReadChapters(book.chapters, toc, bookConfig, dstDir);
-
+            var chapterData = {
+                language: book.language,
+                toc: toc,
+                bookConfig: bookConfig,
+                dstDir: dstDir,
+                tocsMapLanguage: tocsMapLanguage,
+                section: section,
+            };
+            ReadChapters(book.chapters, chapterData);
             /*push new toc in toc language map*/
             var tocs = tocsMapLanguage.get(book.language);
             if (!tocs) {
                 tocs = [];
             }
-            tocs.push(toc);
+            if (bookConfig.parent) { //it is a child book
+                var tocElement = tocs.find(function (element) {
+                    console.log("*****" + element.id + "." + bookConfig.id);
+                    if (element.id == bookConfig.parent)
+                        return element;
+                });
+                if (!tocElement) {
+                    tocElement = {
+                        name: book.title,
+                        id: bookConfig.parent,
+                        order: 50,
+                        children: [],
+                    };
+                    tocs.push(tocElement);
+                }
+                tocElement.children.push(toc);
+                tocElement.children.sort(function (toc1, toc2) {
+                    return toc1.order - toc2.order;
+                });
+            } else {
+                var tocElement = tocs.find(function (element) {
+                    if (element.id == bookConfig.id)
+                        return element;
+                });
+                if (tocElement && bookConfig.childBook) {
+                    toc.children.push(tocElement.children);
+                    tocElement.children.sort(function (toc1, toc2) {
+                        return toc1.order - toc2.order;
+                    });
+                    tocElement = toc;
+                } else {
+                    tocs.push(toc);
+                }
+            }
+            tocs.sort(function (toc1, toc2) {
+                return toc1.order - toc2.order;
+            });
             tocsMapLanguage.set(book.language, tocs);
         }
     }
+    //TOFIX: better to do it only at the end
+    GenerateDataTocsAndIndex(tocsMapLanguage, section);
+}
+
+async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
+    var outFile = downloadFile(url, dst, true);
+
+    outFile.on("finish", function () {
+        ReadBook(section, bookConfig, tocsMapLanguage);
+    });
 }
 
 /*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
@@ -180,20 +280,31 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
     /*for each books*/
     for (var idx in sectionConfig.books) {
         var bookConfig = sectionConfig.books[idx];
-        bookConfig.idNb = idx;
-        bookConfig.nbBooks = sectionConfig.books.length;
-        var url = bookConfig.url_fetch || sectionConfig.url_fetch;
-        url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
-        url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
-        url = url.replace("%repo%", bookConfig.git_name);
-        url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
-        url = url.replace("%source%", bookConfig.path);
-        url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
-        url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
+        if (bookConfig.path) {
+            if(sectionConfig.parent) bookConfig.parent = sectionConfig.parent;
+            if(bookConfig.books) bookConfig.childBook = true;
+            bookConfig.idNb = idx;
+            bookConfig.nbBooks = sectionConfig.books.length;
+            var url = bookConfig.url_fetch || sectionConfig.url_fetch;
+            url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
+            url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
+            url = url.replace("%repo%", bookConfig.git_name);
+            url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
+            url = url.replace("%source%", bookConfig.path);
+            url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
+            url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
 
-        bookConfig.url = url;
-        bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, path.basename(bookConfig.path));
-        downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
+            bookConfig.url = url;
+            bookConfig.fileName = path.basename(bookConfig.path);
+            bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, bookConfig.fileName);
+            downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
+        }
+        if(bookConfig.books) {
+            var subSectionConfig = sectionConfig;
+            subSectionConfig.books = bookConfig.books;
+            subSectionConfig.parent = bookConfig.id;
+            FetchBooks(section, subSectionConfig, tocsMapLanguage);
+        }
     }
 }
 
@@ -225,10 +336,7 @@ async function ParseSection(argv, section) {
     }
     section.title = sectionConfig.name;
 
-    /*tocsMapLanguage: key is language, value is toc to be generated*/
-    var tocsMapLanguage = new Map();
-
-    FetchBooks(section, sectionConfig, tocsMapLanguage);
+    FetchBooks(section, sectionConfig, section.tocsMapLanguage);
 }
 
 function main(conf, argv, nextRequest) {
@@ -252,7 +360,10 @@ function main(conf, argv, nextRequest) {
                 nameFile: sectionConfArray[0],
                 path: path.join(config.TOCS_DIR, tocs[item]),
                 file: path.join(config.TOCS_DIR, tocs[item], sectionConfArray[0]),
-                version: sectionConfArray[1]
+                version: sectionConfArray[1],
+                mapNbMarkdown: new Map(),
+                mapNbMarkdownDownloaded: new Map(),
+                tocsMapLanguage: new Map(),
             };
             ParseSection(argv, section);
         }
