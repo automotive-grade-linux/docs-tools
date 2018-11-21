@@ -28,11 +28,12 @@ var VERBOSE;
 
 //parse markdown to get images
 async function parseMarkdown(contents, url, pathMd) {
-    var regexSection = /\((.+\.(jpg|png|pdf|svg))\)/ig;
+    var regexSection = /(\(|src=")(.+\.(jpg|png|pdf|svg))(\)|")/ig;
+    //src="images/app-developer-workflow.png"
 
     var imageRes;
     while ((imageRes = regexSection.exec(contents)) !== null) {
-        var image = imageRes[1].replace(/\s+/, "");
+        var image = imageRes[2].replace(/\s+/, "");
         //ignore links
         if (!image.startsWith("http")) {
             var imageUrl = url.replace(path.basename(pathMd), image);
