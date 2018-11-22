@@ -48,46 +48,60 @@ function setFrontMatter(title) {
     return "---\ntitle: " + title + "\n---\n";
 }
 
+function handleResponse(url, dst, isTextFile, frontMatter, response, outFile) {
+    if (isTextFile) response.setEncoding('utf8');
+    else response.setEncoding('binary');
+
+    var fileContents = '';
+    //front matter is needed to be proceed by jekyll
+    if (frontMatter) fileContents = frontMatter;
+    response.on('data', function (data) {
+        fileContents += data;
+    });
+    response.on('end', function () {
+        //parse data to get images
+        if (isTextFile) {
+            parseMarkdown(fileContents, url, dst);
+            outFile.end(fileContents);
+        }
+        else outFile.end(fileContents, 'binary');
+    });
+}
+
 /*download file*/
 function downloadFile(url, dst, isTextFile, frontMatter) {
     if (!fse.existsSync(path.dirname(dst))) { fse.mkdirsSync(path.dirname(dst)); }
     var outFile = fse.createWriteStream(dst);
 
-    var protocol;
-    if (url.startsWith("http:")) protocol = require("http");
-    else if (url.startsWith("https:")) protocol = require("https");
-    else {
-        console.error("ERROR: " + url + ": protocol not recognized");
-        return;
-    }
-    protocol.get(url, function (response) {
-        if (response.statusCode !== 200) {
-            console.error("ERROR: " + url + ": got %s", response.statusCode);
+    if (fse.existsSync(url)) { //local fetch
+        var inFile = fse.createReadStream(url);
+        handleResponse(url, dst, isTextFile, frontMatter, inFile, outFile);
+        outFile.on('finish', function () {
+            if (VERBOSE) console.log(" --- Local Fetch " + dst + " done");
+        });
+        return outFile;
+    } else {
+        var protocol;
+        if (url.startsWith("http:")) protocol = require("http");
+        else if (url.startsWith("https:")) protocol = require("https");
+        else {
+            console.error("ERROR: " + url + ": protocol not recognized");
             return;
         }
 
-        if (isTextFile) response.setEncoding('utf8');
-        else response.setEncoding('binary');
-
-        var fileContents = '';
-        //front matter is needed to be proceed by jekyll
-        if (frontMatter) fileContents = frontMatter;
-        response.on('data', function (data) {
-            fileContents += data;
-        });
-        response.on('end', function () {
-            //parse data to get images
-            if (isTextFile) {
-                parseMarkdown(fileContents, url, dst);
-                outFile.end(fileContents);
+        protocol.get(url, function (response) {
+            if (response.statusCode !== 200) {
+                console.error("ERROR: " + url + ": got %s", response.statusCode);
+                return;
             }
-            else outFile.end(fileContents, 'binary');
+            handleResponse(url, dst, isTextFile, frontMatter, response, outFile);
+            outFile.on('finish', function () {
+                if (VERBOSE) console.log(" --- Fetch " + dst + " done");
+            });
+        }).on('error', function (e) {
+            console.error("ERROR: " + e.message);
         });
-
-        outFile.on('finish', function () {
-            if (VERBOSE) console.log(" --- Fetch " + dst + " done");
-        });
-    });
+    }
     return outFile;
 }
 
@@ -278,10 +292,23 @@ async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
 
 /*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
 async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
+    var overloadConfig;
+    if(fse.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
+        overloadConfig = yaml.load(fse.readFileSync(config.FETCH_CONFIG_OVERLOAD));
+    }
+
     /*for each books*/
     for (var idx in sectionConfig.books) {
         var bookConfig = sectionConfig.books[idx];
         if (bookConfig.path) {
+            for(var idx in overloadConfig) {
+                var overload = overloadConfig[idx];
+                if(bookConfig.git_name) {
+                    if(overload.git_name==bookConfig.git_name) {
+                        bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
+                    }
+                }
+            }
             if(sectionConfig.parent) bookConfig.parent = sectionConfig.parent;
             if(bookConfig.books) bookConfig.childBook = true;
             bookConfig.idNb = idx;
