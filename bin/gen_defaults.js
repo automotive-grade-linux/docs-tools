@@ -40,22 +40,22 @@ function genDefault (argv, config, defConf, item) {
     // create defaults config
     var docsRoot = config.DOCS_DIR;
     var docsBase = path.basename (config.DOCS_DIR);
-    var docDir  = path.join(docsRoot, item);
+    var docDir  = docsRoot;
 
     // make sure doc directory really exist
     if(!fs.existsSync(docDir)) {
         console.log ("HOOPS: Not Found doc dir=[%s]", docDir);
         process.exit (1);
     }
-    
+
 
     // set defaults for each language
     util.listdirsSync(docDir).forEach(function (langName) {
 
-        var langPath = path.join(docsRoot, item, langName);
+        var langPath = path.join(docsRoot, langName);
         var languageDefaults = {
             scope: {
-                path: path.join (docsBase, item, langName)
+                path: path.join (docsBase, langName)
             },
             values: {
                 language: langName,
@@ -89,7 +89,7 @@ function genDefault (argv, config, defConf, item) {
 
             var versionDefaults = {
                 scope: {
-                    path: path.join (docsBase, item, langName, versionName)
+                    path: path.join (docsBase, langName, versionName, item)
                 },
                 values: {
                     version:          versionName,
@@ -102,32 +102,32 @@ function genDefault (argv, config, defConf, item) {
             };
 
             defConf.defaults.push(versionDefaults);
-        });  
+        });
     });
-      
+
     if (argv.verbose) console.log("  + " + docDir + " (addto _defaults.yml)");
 }
 
 function main (config, argv) {
-    
+
     // open destination _default.yml file
     var destdir = path.join (config.DATA_DIR, "tocs");
     if(!fs.existsSync(destdir)) fs.mkdirSync(destdir);
-    
+
     var fileout = fs.openSync(path.join (destdir, config.DEFAULTS_FILE), 'w');
     fs.writeSync (fileout, util.generatedBy(__filename) +'\n');
-    
+
     var defConf = {"defaults": []};
 
     var tocs = fs.readdirSync(config.TOCS_DIR);
     for (var item in tocs) {
         var tocDir  = path.join (config.TOCS_DIR, tocs[item]);
-        
+
         genDefault (argv, config, defConf, tocs[item]);
     }
 
     // write yaml defaults config file
-    fs.writeSync (fileout, yaml.dump(defConf, {indent: 4}) +'\n');   
+    fs.writeSync (fileout, yaml.dump(defConf, {indent: 4}) +'\n');
     if (argv.verbose) console.log ("  + get_defaults done");
 
 }

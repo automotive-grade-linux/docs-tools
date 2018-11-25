@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright 2014 Fulup Ar Foll
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,7 @@ config = {
     SITE_DIR   : SITE_DIR,
     DATA_DIR   : path.join (SITE_DIR, "_data"),
     TOCS_DIR   : path.join (SITE_DIR,"..","content", "tocs"),
+    DOCS_VERSION_FILE : path.join(SITE_DIR, "_data", "docs-versions.yml"),
     DOCS_DIR   : path.join (SITE_DIR, "docs"),
 
     VER_CURRENT       : "xx.x",
@@ -48,23 +49,23 @@ config = {
     CONFIG_PROD       : "_prod.yml",
     CONFIG_DEV        : "_dev.yml",
     CONFIG_NODOCS     : "_nodocs.yml",
-    
+
     LANGUAGES         : [LANG_DEFAULT],
     LANG_DEFAULT      : LANG_DEFAULT,
-    
+
     JEKYLL_DEV_FLAGS  : ["--trace"],
     JEKYLL_PROD_FLAGS : [],
-    
+
     SCSS_DIR          : path.join (SITE_DIR, "site/static/scss"),
     JS_DIR            : path.join (SITE_DIR, "static/js"),
     BIN_DIR           : "bin",
-    
+
     LATEST_ALIAS_URI  : "/latest/",
     ALL_PAGES_FILE    : path.join (SITE_DIR, "_data/all-pages.yml"),
     REDIRECTS_FILE    : path.join (SITE_DIR, "_data/redirects.yml"),
-    
+
     DEFAULT_GIT_DOC : "README.md",
-        
+
     GEN_TOCS    : "bin/gen_tocs",
     GEN_VERS    : "bin/gen_versions",
     GEN_DEFS    : "bin/gen_defaults",
@@ -91,7 +92,7 @@ config = {
 	AGL_SRC : "automotive-grade-linux",
 
     CMD_JEKYLL  : "jekyll",
-    
+
     ENDTAG : ""
 };
 

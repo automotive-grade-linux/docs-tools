@@ -28,10 +28,10 @@ function remove(argv, path) {
 
 // main
 function main (config, argv) {
-    
+
     var targetVersion  = config.VERSION_TAGDEV;
     var targetLanguage = config.LANG_DEFAULT;
-    
+
 
     remove(argv,path.join(config.CONFIG_DIR, config.VERSION_RELEASE));
     remove(argv,config.DST_DEVL);
@@ -45,9 +45,9 @@ function main (config, argv) {
 
     var tocs = fs.readdirSync(config.TOCS_DIR);
     for (var item in tocs) {
-        var destination= path.join (config.DOCS_DIR, tocs[item], "*", "*", config.FETCH_DIR);
+        var destination= path.join (config.DOCS_DIR, "*", "*", tocs[item], config.FETCH_DIR);
         remove(argv,destination);
-        var idxpath= path.join (config.DOCS_DIR, tocs[item], "*", "*", "index.html");
+        var idxpath= path.join (config.DOCS_DIR, "*", "*", tocs[item], "index.html");
         remove(argv,idxpath);
     }
 

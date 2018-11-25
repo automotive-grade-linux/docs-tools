@@ -222,7 +222,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
                 order: order,
                 children: [],
             };
-            var dstDir = path.join(config.DOCS_DIR, section.name, book.language, section.version, config.FETCH_DIR);
+            var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
 
             var chapterData = {
                 language: book.language,
@@ -344,7 +344,7 @@ async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
         var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
         fse.writeFileSync(tocsPath, output);
 
-        var dst = path.join(config.DOCS_DIR, section.name, key, section.version);
+        var dst = path.join(config.DOCS_DIR, key, section.version, section.name);
         var idxpath = path.join(dst, "index.html");
         var buf = "---\n";
         buf += "title: " + section.title + "\n";
