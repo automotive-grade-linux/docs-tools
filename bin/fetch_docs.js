@@ -112,6 +112,7 @@ async function ReadChapters(chapters, chapterData) {
 
         /*if no children in chapter*/
         if (chapter.url) {
+            chapter.url = chapter.url.replace("%lang%/", "");
             var dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
             if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
             dst = path.join(dst, path.basename(chapter.url));
@@ -206,77 +207,75 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         process.exit(1);
     }
 
-    countNumberOfMarkdown(section, bookContent, bookConfig);
+    //countNumberOfMarkdown(section, bookContent, bookConfig);
 
     /*loop on books*/
     for (var idxBook in bookContent.books) {
-        var bookLangs = bookContent.books[idxBook];
+        //var bookLangs = bookContent.books[idxBook];
         var order = 50;
-        if(bookLangs.order) order = bookLangs.order;
-        /*loop on languages*/
-        for (var idxBookLang in bookLangs.languages) {
-            var book = bookLangs.languages[idxBookLang];
-            var toc = {
-                name: book.title,
-                id: bookConfig.id,
-                order: order,
-                children: [],
-            };
-            var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
+        var book = bookContent.books[idxBook];
+        if (book.order) order = book.order;
+        book.language = config.LANG_DEFAULT;
+        var toc = {
+            name: book.title,
+            id: bookConfig.id,
+            order: order,
+            children: [],
+        };
+        var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
 
-            var chapterData = {
-                language: book.language,
-                toc: toc,
-                bookConfig: bookConfig,
-                dstDir: dstDir,
-                tocsMapLanguage: tocsMapLanguage,
-                section: section,
-            };
-            ReadChapters(book.chapters, chapterData);
-            /*push new toc in toc language map*/
-            var tocs = tocsMapLanguage.get(book.language);
-            if (!tocs) {
-                tocs = [];
+        var chapterData = {
+            language: book.language,
+            toc: toc,
+            bookConfig: bookConfig,
+            dstDir: dstDir,
+            tocsMapLanguage: tocsMapLanguage,
+            section: section,
+        };
+        ReadChapters(book.chapters, chapterData);
+        /*push new toc in toc language map*/
+        var tocs = tocsMapLanguage.get(book.language);
+        if (!tocs) {
+            tocs = [];
+        }
+        if (bookConfig.parent) { //it is a child book
+            var tocElement = tocs.find(function (element) {
+                console.log("*****" + element.id + "." + bookConfig.id);
+                if (element.id == bookConfig.parent)
+                    return element;
+            });
+            if (!tocElement) {
+                tocElement = {
+                    name: book.title,
+                    id: bookConfig.parent,
+                    order: 50,
+                    children: [],
+                };
+                tocs.push(tocElement);
             }
-            if (bookConfig.parent) { //it is a child book
-                var tocElement = tocs.find(function (element) {
-                    console.log("*****" + element.id + "." + bookConfig.id);
-                    if (element.id == bookConfig.parent)
-                        return element;
-                });
-                if (!tocElement) {
-                    tocElement = {
-                        name: book.title,
-                        id: bookConfig.parent,
-                        order: 50,
-                        children: [],
-                    };
-                    tocs.push(tocElement);
-                }
-                tocElement.children.push(toc);
+            tocElement.children.push(toc);
+            tocElement.children.sort(function (toc1, toc2) {
+                return toc1.order - toc2.order;
+            });
+        } else {
+            var tocElement = tocs.find(function (element) {
+                if (element.id == bookConfig.id)
+                    return element;
+            });
+            if (tocElement && bookConfig.childBook) {
+                toc.children.push(tocElement.children);
                 tocElement.children.sort(function (toc1, toc2) {
                     return toc1.order - toc2.order;
                 });
+                tocElement = toc;
             } else {
-                var tocElement = tocs.find(function (element) {
-                    if (element.id == bookConfig.id)
-                        return element;
-                });
-                if (tocElement && bookConfig.childBook) {
-                    toc.children.push(tocElement.children);
-                    tocElement.children.sort(function (toc1, toc2) {
-                        return toc1.order - toc2.order;
-                    });
-                    tocElement = toc;
-                } else {
-                    tocs.push(toc);
-                }
+                tocs.push(toc);
             }
-            tocs.sort(function (toc1, toc2) {
-                return toc1.order - toc2.order;
-            });
-            tocsMapLanguage.set(book.language, tocs);
         }
+        tocs.sort(function (toc1, toc2) {
+            return toc1.order - toc2.order;
+        });
+        tocsMapLanguage.set(book.language, tocs);
     }
     //TOFIX: better to do it only at the end
     GenerateDataTocsAndIndex(tocsMapLanguage, section);
