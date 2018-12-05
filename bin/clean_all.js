@@ -43,12 +43,12 @@ function main (config, argv) {
     remove(argv,path.join(config.DATA_DIR, "tocs", "*", "*.yml"));
     remove(argv,path.join(config.DATA_DIR, "tocs", "*", config.VERSION_FILE));
 
-    var tocs = fs.readdirSync(config.TOCS_DIR);
-    for (var item in tocs) {
-        var destination= path.join (config.DOCS_DIR, "*", "*", tocs[item], config.FETCH_DIR);
-        remove(argv,destination);
-        var idxpath= path.join (config.DOCS_DIR, "*", "*", tocs[item], "index.html");
-        remove(argv,idxpath);
+    var docs = fs.readdirSync(config.DOCS_DIR);
+    for (var item in docs) {
+        var dstitem = path.join(config.DOCS_DIR, docs[item]);
+        if (fs.statSync(dstitem).isDirectory()) {
+            remove(argv, dstitem);
+        }
     }
 
     if (argv.verbose) console.log ("  + clean_all done");

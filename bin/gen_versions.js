@@ -50,7 +50,7 @@ function genVersion(argv, config) {
         if (langId in LANGUAGE_MAP) {
             langName = LANGUAGE_MAP[langId];
         } else {
-            console.error("Language identifier '" + langId + "' doesn't have an associated name. Please fix that by changing " + scriptName + '.');
+            console.error("Language identifier '" + langId + "' doesn't have an associated name.");
             process.exit(1);
         }
 

@@ -344,6 +344,7 @@ async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
         fse.writeFileSync(tocsPath, output);
 
         var dst = path.join(config.DOCS_DIR, key, section.version, section.name);
+        if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
         var idxpath = path.join(dst, "index.html");
         var buf = "---\n";
         buf += "title: " + section.title + "\n";
