@@ -142,15 +142,16 @@ async function ReadChapters(chapters, chapterData) {
             nbDownload += 1;
             chapterData.section.mapNbMarkdownDownloaded.set(chapterData.language, nbDownload);
         } else if (chapter.children) { //if children call recursively ReadChapters
+            var subChapterData = Object.assign({}, chapterData);
+
             var subToc = {
                 name: chapter.name,
                 order: 50,
                 children: [],
             };
-            var finalToc = chapterData.toc;
-            chapterData.toc = subToc;
-            ReadChapters(chapter.children, chapterData);
-            finalToc.children.push(subToc);
+            subChapterData.toc = subToc;
+            ReadChapters(chapter.children, subChapterData);
+            chapterData.toc.children.push(subToc);
         }
     }
 }
