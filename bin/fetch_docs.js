@@ -120,7 +120,7 @@ async function ReadChapters(chapters, chapterData) {
             while (fse.existsSync(dst)) { //if file already exists rename it
                 var newName = idx.toString() + "." + subId.toString() + "-" + path.basename(chapter.url);
                 chapter.url = path.join(path.dirname(chapter.url), newName);
-                dst = path.join(dstDir, chapter.url);
+                dst = path.join(chapterData.dstDir, chapter.url);
                 if (VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
                 subId = parseInt(subId) + 1;
             }
@@ -323,7 +323,7 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
             url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
 
             bookConfig.url = url;
-            bookConfig.fileName = path.basename(bookConfig.path);
+            bookConfig.fileName = bookConfig.id + "-" + path.basename(bookConfig.path);
             bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, bookConfig.fileName);
             downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
         }
