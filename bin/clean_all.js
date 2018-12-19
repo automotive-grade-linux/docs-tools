@@ -39,9 +39,10 @@ function main (config, argv) {
     remove(argv,path.join(config.TOCS_DIR, config.VER_CURRENT));
     remove(argv,config.ALL_PAGES_FILE);
     remove(argv,path.join(config.TOCS_DIR, config.DEFAULTS_FILE));
-	remove(argv,path.join(config.DATA_DIR, "tocs", config.DEFAULTS_FILE));
-    remove(argv,path.join(config.DATA_DIR, "tocs", "*", "*.yml"));
-    remove(argv,path.join(config.DATA_DIR, "tocs", "*", config.VERSION_FILE));
+    remove(argv,path.join(config.DATA_DIR, "tocs", "*"))
+	// remove(argv,path.join(config.DATA_DIR, "tocs", config.DEFAULTS_FILE));
+    // remove(argv,path.join(config.DATA_DIR, "tocs", "*", "*.yml"));
+    // remove(argv,path.join(config.DATA_DIR, "tocs", "*", config.VERSION_FILE));
 
     var docs = fs.readdirSync(config.DOCS_DIR);
     for (var item in docs) {
