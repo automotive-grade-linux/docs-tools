@@ -28,19 +28,27 @@ var VERBOSE;
 
 //parse markdown to get images
 async function parseMarkdown(contents, url, pathMd) {
-    var regexSection = /(\(|src=")(.+\.(jpg|png|pdf|svg))(\)|")/ig;
-    //src="images/app-developer-workflow.png"
 
-    var imageRes;
-    while ((imageRes = regexSection.exec(contents)) !== null) {
-        var image = imageRes[2].replace(/\s+/, "");
-        //ignore links
-        if (!image.startsWith("http")) {
-            var imageUrl = url.replace(path.basename(pathMd), image);
-            var imageDst = path.join(path.dirname(pathMd), image);
-            downloadFile(imageUrl, imageDst, false);
+    var regexArr = [
+        // Match reference   ![make-units](pictures/make-units.svg)
+        /\[.*\]\((.*\.(jpg|png|pdf|svg))\)/ig,
+
+        // Match reference   [afm-daemons]: pictures/afm-daemons.svg
+        /\[.*\]: *(.*\.(jpg|png|pdf|svg))/ig,
+    ];
+
+    regexArr.forEach(function(rx) {
+        var imageRes;
+        while ((imageRes = rx.exec(contents)) !== null) {
+            var image = imageRes[1].replace(/\s+/, "");
+            //ignore links
+            if (!image.startsWith("http")) {
+                var imageUrl = url.replace(path.basename(pathMd), image);
+                var imageDst = path.join(path.dirname(pathMd), image);
+                downloadFile(imageUrl, imageDst, false);
+            }
         }
-    }
+    });
 }
 
 /*needed to be proceed by jekyll*/
