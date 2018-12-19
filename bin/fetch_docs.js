@@ -125,7 +125,7 @@ async function ReadChapters(chapters, chapterData) {
                 subId = parseInt(subId) + 1;
             }
 
-            var url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.localPath), chapter.url);
+            var url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
 
             downloadFile(url, dst, true, setFrontMatter(chapter.name));
 
