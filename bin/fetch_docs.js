@@ -118,9 +118,8 @@ async function ReadChapters(chapters, chapterData) {
             dst = path.join(dst, path.basename(chapter.url));
             var subId = 0;
             while (fse.existsSync(dst)) { //if file already exists rename it
-                var newName = idx.toString() + "." + subId.toString() + "-" + path.basename(chapter.url);
-                chapter.url = path.join(path.dirname(chapter.url), newName);
-                dst = path.join(chapterData.dstDir, chapter.url);
+                var newName = idx.toString() + "." + subId.toString() + "__" + path.basename(chapter.url);
+                dst = path.join(chapterData.dstDir,  path.join(path.dirname(chapter.url), newName));
                 if (VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
                 subId = parseInt(subId) + 1;
             }
