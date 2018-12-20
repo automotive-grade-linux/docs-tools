@@ -121,10 +121,27 @@ async function ReadChapters(chapters, chapterData) {
 
         /*if no children in chapter*/
         if (chapter.url) {
+            // src_prefix : common source prefix directory for all url of a chapter
+            if (chapterData.src_prefix && chapterData.src_prefix != "") {
+                chapter.url = path.join(chapterData.src_prefix, chapter.url)
+            }
+
+            // FIXME: for now don't support any lang
             chapter.url = chapter.url.replace("%lang%/", "");
+
             var dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
             if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
-            dst = path.join(dst, path.basename(chapter.url));
+
+            // destination : allow to rename markdown filename in
+            var newChapterName;
+            if (chapter.destination && chapter.destination != "") {
+                dst = path.join(dst, chapter.destination);
+                newChapterName = path.join(path.dirname(chapter.url), chapter.destination);
+            } else {
+                dst = path.join(dst, path.basename(chapter.url));
+                newChapterName = chapter.url;
+            }
+
             var subId = 0;
             while (fse.existsSync(dst)) { //if file already exists rename it
                 var newName = idx.toString() + "." + subId.toString() + "__" + path.basename(chapter.url);
@@ -140,7 +157,7 @@ async function ReadChapters(chapters, chapterData) {
             var chapterToc = {
                 name: chapter.name,
                 order: 50,
-                url: path.join("reference", chapter.url).replace(".md", ".html"),
+                url: path.join("reference", newChapterName).replace(".md", ".html"),
             }
             //push new chapterToc for generated yml file
             chapterData.toc.children.push(chapterToc);
@@ -240,6 +257,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
             dstDir: dstDir,
             tocsMapLanguage: tocsMapLanguage,
             section: section,
+            src_prefix: book.src_prefix,
         };
         ReadChapters(book.chapters, chapterData);
         /*push new toc in toc language map*/
