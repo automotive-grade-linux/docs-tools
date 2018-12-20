@@ -94,7 +94,7 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
         else if (url.startsWith("https:")) protocol = require("https");
         else {
             console.error("ERROR: " + url + ": protocol not recognized");
-            return;
+            process.exit(-1);
         }
 
         protocol.get(url, function (response) {
