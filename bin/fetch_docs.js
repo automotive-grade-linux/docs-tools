@@ -121,27 +121,40 @@ async function ReadChapters(chapters, chapterData) {
 
         /*if no children in chapter*/
         if (chapter.url) {
+            var url, dst, dstFilename;
+
+            // FIXME: for now don't support any lang
+            chapter.url = chapter.url.replace("%lang%/", "");
+
+            // Build source url and dst file
+            dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
+            dstFilename = path.basename(chapter.url);
+
+            // dst_prefix : common destination prefix directory
+            if (chapterData.bookConfig.dst_prefix && chapterData.bookConfig.dst_prefix != "") {
+                dst = path.join(chapterData.dstDir, chapterData.bookConfig.dst_prefix, path.dirname(chapter.url));
+            }
+
             // src_prefix : common source prefix directory for all url of a chapter
             if (chapterData.src_prefix && chapterData.src_prefix != "") {
                 chapter.url = path.join(chapterData.src_prefix, chapter.url)
             }
 
-            // FIXME: for now don't support any lang
-            chapter.url = chapter.url.replace("%lang%/", "");
-
-            var dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
-            if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
-
-            // destination : allow to rename markdown filename in
-            var newChapterName;
+            // destination : allow to rename markdown filename in website
             if (chapter.destination && chapter.destination != "") {
-                dst = path.join(dst, chapter.destination);
-                newChapterName = path.join(path.dirname(chapter.url), chapter.destination);
-            } else {
-                dst = path.join(dst, path.basename(chapter.url));
-                newChapterName = chapter.url;
+                dstFilename = chapter.destination;
             }
 
+            url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+            dst = path.join(dst, dstFilename);
+
+            if (fse.existsSync(dst)) {
+                console.error("ERROR destination file already exists :");
+                console.error("  fetch url :", url);
+                console.error("  destination file :", dst);
+                process.exit(-2);
+            }
+            /* TODO: cleanup if ok to have unique files
             var subId = 0;
             while (fse.existsSync(dst)) { //if file already exists rename it
                 var newName = idx.toString() + "." + subId.toString() + "__" + path.basename(chapter.url);
@@ -149,16 +162,18 @@ async function ReadChapters(chapters, chapterData) {
                 if (VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
                 subId = parseInt(subId) + 1;
             }
+            */
 
-            var url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+            if (!fse.existsSync(dst)) fse.mkdirsSync(path.dirname(dst));
 
             downloadFile(url, dst, true, setFrontMatter(chapter.name));
 
             var chapterToc = {
                 name: chapter.name,
                 order: 50,
-                url: path.join("reference", newChapterName).replace(".md", ".html"),
+                url: path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html"),
             }
+
             //push new chapterToc for generated yml file
             chapterData.toc.children.push(chapterToc);
 
@@ -166,6 +181,7 @@ async function ReadChapters(chapters, chapterData) {
             var nbDownload = chapterData.section.mapNbMarkdownDownloaded.get(chapterData.language);
             nbDownload += 1;
             chapterData.section.mapNbMarkdownDownloaded.set(chapterData.language, nbDownload);
+
         } else if (chapter.children) { //if children call recursively ReadChapters
             var subChapterData = Object.assign({}, chapterData);
 
