@@ -357,11 +357,13 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
             bookConfig.nbBooks = sectionConfig.books.length;
             var url = bookConfig.url_fetch || sectionConfig.url_fetch;
             url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
+            url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
             url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
             url = url.replace("%repo%", bookConfig.git_name);
             url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
             url = url.replace("%source%", bookConfig.path);
             url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
+            url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
             url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
 
             bookConfig.url = url;
