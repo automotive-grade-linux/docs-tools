@@ -361,10 +361,10 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
         if (bookConfig.path) {
             for(var idx in overloadConfig) {
                 var overload = overloadConfig[idx];
-                if(bookConfig.git_name) {
-                    if(overload.git_name==bookConfig.git_name) {
+                if( (bookConfig.git_name && (overload.git_name == bookConfig.git_name)) || 
+                    (bookConfig.id && (overload.id == bookConfig.id)) ) {
                         bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
-                    }
+                        bookConfig.git_commit = overload.git_commit;
                 }
             }
             if(sectionConfig.parent) bookConfig.parent = sectionConfig.parent;
