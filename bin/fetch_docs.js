@@ -275,6 +275,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         var toc = {
             name: book.title,
             id: bookConfig.id,
+            orderBook: bookConfig.idNb,
             order: order,
             children: [],
         };
@@ -314,6 +315,9 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
             }
             tocElement.children.push(toc);
             tocElement.children.sort(function (toc1, toc2) {
+                return toc1.orderBook - toc2.orderBook;
+            });
+            tocElement.children.sort(function (toc1, toc2) {
                 return toc1.order - toc2.order;
             });
         } else {
@@ -324,6 +328,9 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
             if (tocElement && bookConfig.childBook) {
                 toc.children.push(tocElement.children);
                 tocElement.children.sort(function (toc1, toc2) {
+                    return toc1.orderBook - toc2.orderBook;
+                });
+                tocElement.children.sort(function (toc1, toc2) {
                     return toc1.order - toc2.order;
                 });
                 tocElement = toc;
@@ -331,6 +338,9 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
                 tocs.push(toc);
             }
         }
+        tocs.sort(function (toc1, toc2) {
+            return toc1.orderBook - toc2.orderBook;
+        });
         tocs.sort(function (toc1, toc2) {
             return toc1.order - toc2.order;
         });
@@ -340,7 +350,10 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
     GenerateDataTocsAndIndex(tocsMapLanguage, section);
 }
 
+var orderBook = 0;
+
 async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
+    var orderBookTmp = orderBook + 1;
     var outFile = downloadFile(url, dst, true);
 
     outFile.on("finish", function () {
@@ -361,7 +374,7 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
         if (bookConfig.path) {
             for(var idx in overloadConfig) {
                 var overload = overloadConfig[idx];
-                if( (bookConfig.git_name && (overload.git_name == bookConfig.git_name)) || 
+                if( (bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
                     (bookConfig.id && (overload.id == bookConfig.id)) ) {
                         bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
                         bookConfig.git_commit = overload.git_commit;
