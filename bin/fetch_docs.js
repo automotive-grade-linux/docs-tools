@@ -185,7 +185,7 @@ async function ReadChapters(chapters, chapterData) {
             var chapterToc = {
                 name: chapter.name,
                 order: 50,
-                orderBook: chapterData.bookConfig.idNb,
+                orderBook: 0,
                 url: path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html"),
             }
 
@@ -203,7 +203,7 @@ async function ReadChapters(chapters, chapterData) {
             var subToc = {
                 name: chapter.name,
                 order: 50,
-                orderBook: subChapterData.bookConfig.idNb,
+                orderBook: 0,
                 children: [],
             };
             subChapterData.toc = subToc;
