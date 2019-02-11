@@ -31,7 +31,7 @@ async function parseMarkdown(contents, url, pathMd) {
 
     var regexArr = [
         // Match reference   ![make-units](pictures/make-units.svg)
-        /\[.*\]\((.*\.(jpg|png|pdf|svg))\)/ig,
+        /\[.*\]\((.*\.(jpg|png|pdf|svg)).*\)/ig,
 
         // Match reference   [afm-daemons]: pictures/afm-daemons.svg
         /\[.*\]: *(.*\.(jpg|png|pdf|svg))/ig,
@@ -185,6 +185,7 @@ async function ReadChapters(chapters, chapterData) {
             var chapterToc = {
                 name: chapter.name,
                 order: 50,
+                orderBook: chapterData.bookConfig.idNb,
                 url: path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html"),
             }
 
@@ -202,6 +203,7 @@ async function ReadChapters(chapters, chapterData) {
             var subToc = {
                 name: chapter.name,
                 order: 50,
+                orderBook: subChapterData.bookConfig.idNb,
                 children: [],
             };
             subChapterData.toc = subToc;
@@ -257,7 +259,7 @@ function countNumberOfMarkdown(section, bookContent, bookConfig) {
 async function ReadBook(section, bookConfig, tocsMapLanguage) {
     // get book
     try {
-        var bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
+           var bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
     } catch (error) {
         console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
         process.exit(1);
@@ -300,7 +302,6 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         }
         if (bookConfig.parent) { //it is a child book
             var tocElement = tocs.find(function (element) {
-                console.log("*****" + element.id + "." + bookConfig.id);
                 if (element.id == bookConfig.parent)
                     return element;
             });
@@ -309,6 +310,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
                     name: book.title,
                     id: bookConfig.parent,
                     order: 50,
+                    orderBook: bookConfig.idNb,
                     children: [],
                 };
                 tocs.push(tocElement);
@@ -316,9 +318,6 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
             tocElement.children.push(toc);
             tocElement.children.sort(function (toc1, toc2) {
                 return toc1.orderBook - toc2.orderBook;
-            });
-            tocElement.children.sort(function (toc1, toc2) {
-                return toc1.order - toc2.order;
             });
         } else {
             var tocElement = tocs.find(function (element) {
@@ -330,9 +329,6 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
                 tocElement.children.sort(function (toc1, toc2) {
                     return toc1.orderBook - toc2.orderBook;
                 });
-                tocElement.children.sort(function (toc1, toc2) {
-                    return toc1.order - toc2.order;
-                });
                 tocElement = toc;
             } else {
                 tocs.push(toc);
@@ -341,19 +337,13 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         tocs.sort(function (toc1, toc2) {
             return toc1.orderBook - toc2.orderBook;
         });
-        tocs.sort(function (toc1, toc2) {
-            return toc1.order - toc2.order;
-        });
         tocsMapLanguage.set(book.language, tocs);
     }
     //TOFIX: better to do it only at the end
     GenerateDataTocsAndIndex(tocsMapLanguage, section);
 }
 
-var orderBook = 0;
-
 async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
-    var orderBookTmp = orderBook + 1;
     var outFile = downloadFile(url, dst, true);
 
     outFile.on("finish", function () {
@@ -372,8 +362,8 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
     for (var idx in sectionConfig.books) {
         var bookConfig = sectionConfig.books[idx];
         if (bookConfig.path) {
-            for(var idx in overloadConfig) {
-                var overload = overloadConfig[idx];
+            for(var idx2 in overloadConfig) {
+                var overload = overloadConfig[idx2];
                 if( (bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
                     (bookConfig.id && (overload.id == bookConfig.id)) ) {
                         bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
@@ -401,17 +391,43 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
             downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
         }
         if(bookConfig.books) {
-            var subSectionConfig = sectionConfig;
-            subSectionConfig.books = bookConfig.books;
+            var subSectionConfig = Object.assign({}, sectionConfig);
+            subSectionConfig.books = Object.assign({}, bookConfig.books);
             subSectionConfig.parent = bookConfig.id;
             FetchBooks(section, subSectionConfig, tocsMapLanguage);
         }
     }
 }
 
+/*not using sort array nodejs function because
+ * behavior change with 10 items*/
+function sortWithOrder(tab) {
+    var sortedTab = [];
+
+    var iterator = tab.keys();
+    for (let key of iterator) {
+        var entry = tab[key];
+        if(entry.children) {
+            sortWithOrder(entry.children);
+        }
+        var idx = sortedTab.findIndex(function(newEntry) {
+            return newEntry.order > entry.order;
+        });
+        idx = idx < 0 ? sortedTab.length : idx;
+        var tmpSortedTab = sortedTab.slice(idx)
+        var sortedTab = sortedTab.slice(0, idx);
+        sortedTab.push(entry);
+        sortedTab.concat(tmpSortedTab);;
+    }
+    tab = sortedTab;
+}
+
 async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
     /*generated _toc_<version>_<language>.yml and index.html for each {version, language}*/
-    tocsMapLanguage.forEach(function (value, key, map) {
+    tocsMapLanguage.forEach(function (unsortedValue, key, map) {
+        //var value = Object.assign({}, unsortedValue);
+        var value = unsortedValue.slice();
+        sortWithOrder(value);
         var output = yaml.dump(value, { indent: 4 });
         var destTocName = helpers.genTocfileName(key, section.version);
         var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
