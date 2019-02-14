@@ -124,18 +124,24 @@ async function ReadChapters(chapters, chapterData) {
 
         /*if no children in chapter*/
         if (chapter.url) {
-            var url, dst, dstFilename;
+            var url, dst, dstFilename, pathDirName;
 
             // FIXME: for now don't support any lang
             chapter.url = chapter.url.replace("%lang%/", "");
+            dstFilename = path.basename(chapter.url);
 
             // Build source url and dst file
-            dst = path.join(chapterData.dstDir, path.dirname(chapter.url));
-            dstFilename = path.basename(chapter.url);
+            if(isPdf(chapter.url)) {
+                pathDirName = "";
+                dst = chapterData.dstDir;
+            } else {
+                pathDirName = path.dirname(chapter.url);
+                dst = path.join(chapterData.dstDir, pathDirName);
+            }
 
             // dst_prefix : common destination prefix directory
             if (chapterData.bookConfig.dst_prefix && chapterData.bookConfig.dst_prefix != "") {
-                dst = path.join(chapterData.dstDir, chapterData.bookConfig.dst_prefix, path.dirname(chapter.url));
+                dst = path.join(chapterData.dstDir, chapterData.bookConfig.dst_prefix, pathDirName);
             }
 
             // src_prefix : common source prefix directory for all url of a chapter
@@ -148,7 +154,11 @@ async function ReadChapters(chapters, chapterData) {
                 dstFilename = chapter.destination;
             }
 
-            url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+            if(isPdf(chapter.url)) {
+                url = chapter.url;
+            } else {
+                url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+            }
             dst = path.join(dst, dstFilename);
 
             if (fse.existsSync(dst)) {
@@ -180,13 +190,20 @@ async function ReadChapters(chapters, chapterData) {
                 origin_url: url,
             };
 
-            downloadFile(url, dst, true, setFrontMatter(chapterData.bookConfig.localPath, newFrontMatter));
+            var newUrl;
+            if(url.endsWith(".pdf")) {
+                downloadFile(url, dst, false, "");
+                newUrl = path.join("reference", path.relative(chapterData.dstDir, dst));
+            }else {
+                downloadFile(url, dst, true, setFrontMatter(chapterData.bookConfig.localPath, newFrontMatter));
+                newUrl = path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html");
+            }
 
             var chapterToc = {
                 name: chapter.name,
                 order: 50,
                 orderBook: 0,
-                url: path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html"),
+                url: newUrl,
             }
 
             //push new chapterToc for generated yml file
@@ -257,12 +274,29 @@ function countNumberOfMarkdown(section, bookContent, bookConfig) {
 
 /*ReadBook: read a book yml file*/
 async function ReadBook(section, bookConfig, tocsMapLanguage) {
+    var bookContent = {};
     // get book
-    try {
-           var bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
-    } catch (error) {
-        console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
-        process.exit(1);
+    if(isPdf(bookConfig.path)) {
+        if(!bookConfig.name) {
+            bookConfig.name = path.basename(bookConfig.path).replace(".pdf","");
+        }
+        var chp = {
+            name: bookConfig.name,
+            url: bookConfig.path,
+        };
+        var bk = {
+            title: bookConfig.name,
+            chapters: [chp],
+        };
+        bookContent.books = [];
+        bookContent.books.push(bk);
+    } else {
+        try {
+            bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
+        } catch (error) {
+            console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
+            process.exit(1);
+        }
     }
 
     //countNumberOfMarkdown(section, bookContent, bookConfig);
@@ -344,11 +378,19 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
 }
 
 async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
-    var outFile = downloadFile(url, dst, true);
-
-    outFile.on("finish", function () {
+    if(isPdf(url)) {
         ReadBook(section, bookConfig, tocsMapLanguage);
-    });
+    } else {
+        var outFile = downloadFile(url, dst, true);
+
+        outFile.on("finish", function () {
+            ReadBook(section, bookConfig, tocsMapLanguage);
+        });
+    }
+}
+
+function isPdf(name) {
+    return name.endsWith(".pdf");
 }
 
 /*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
@@ -374,16 +416,21 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
             if(bookConfig.books) bookConfig.childBook = true;
             bookConfig.idNb = idx;
             bookConfig.nbBooks = sectionConfig.books.length;
-            var url = bookConfig.url_fetch || sectionConfig.url_fetch;
-            url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
-            url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
-            url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
-            url = url.replace("%repo%", bookConfig.git_name);
-            url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
-            url = url.replace("%source%", bookConfig.path);
-            url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
-            url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
-            url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
+            var url;
+            if(isPdf(bookConfig.path)) {
+                url = bookConfig.path;
+            } else {
+                url = bookConfig.url_fetch || sectionConfig.url_fetch;
+                url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
+                url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
+                url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
+                url = url.replace("%repo%", bookConfig.git_name);
+                url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
+                url = url.replace("%source%", bookConfig.path);
+                url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
+                url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
+                url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
+            }
 
             bookConfig.url = url;
             bookConfig.fileName = bookConfig.id + "-" + path.basename(bookConfig.path);
@@ -431,6 +478,7 @@ async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
         var output = yaml.dump(value, { indent: 4 });
         var destTocName = helpers.genTocfileName(key, section.version);
         var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
+        if (!fse.existsSync(tocsPath)) fse.mkdirsSync(path.dirname(tocsPath));
         fse.writeFileSync(tocsPath, output);
 
         var dst = path.join(config.DOCS_DIR, key, section.version, section.name);
