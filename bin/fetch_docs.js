@@ -431,6 +431,9 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
                 url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
                 url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
                 url = url.replace("%repo%", bookConfig.git_name);
+                if(!bookConfig.git_commit && !sectionConfig.git_commit) {
+                    bookConfig.git_commit = section.version;
+                }
                 url = url.replace("%commit%", (bookConfig.git_commit || sectionConfig.git_commit));
                 url = url.replace("%source%", bookConfig.path);
                 url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
