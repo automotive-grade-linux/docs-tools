@@ -443,7 +443,7 @@ async function FetchBooks(section, sectionConfig, tocsMapLanguage) {
 
             bookConfig.url = url;
             bookConfig.fileName = bookConfig.id + "-" + path.basename(bookConfig.path);
-            bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, bookConfig.fileName);
+            bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, section.version, bookConfig.fileName);
             downloadBook(url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
         }
         if(bookConfig.books) {
