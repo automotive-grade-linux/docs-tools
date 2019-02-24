@@ -359,11 +359,17 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
                     return element;
             });
             if (tocElement && bookConfig.childBook) {
-                toc.children.push(tocElement.children);
+                toc.children = toc.children.concat(tocElement.children);
                 tocElement.children.sort(function (toc1, toc2) {
                     return toc1.orderBook - toc2.orderBook;
                 });
-                tocElement = toc;
+                var idxTocs = tocs.indexOf(tocElement);
+                if(idxTocs < 0) {
+                    console.error("ERROR: " + idxTocs + ": < 0, tocElement not found");
+                    process.exit(-1);
+                }
+                tocs[idxTocs] = toc;
+                //tocElement = toc;
             } else {
                 tocs.push(toc);
             }
