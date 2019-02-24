@@ -103,7 +103,7 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
         protocol.get(url, function (response) {
             if (response.statusCode !== 200) {
                 console.error("ERROR: " + url + ": got %s", response.statusCode);
-                process.exit(-1);
+                return;
             }
             handleResponse(url, dst, isTextFile, frontMatter, response, outFile);
             outFile.on('finish', function () {
