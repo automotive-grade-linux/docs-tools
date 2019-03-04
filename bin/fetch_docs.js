@@ -474,17 +474,15 @@ function sortWithOrder(tab) {
         var tmpSortedTab = sortedTab.slice(idx)
         var sortedTab = sortedTab.slice(0, idx);
         sortedTab.push(entry);
-        sortedTab.concat(tmpSortedTab);;
+        sortedTab = sortedTab.concat(tmpSortedTab);;
     }
-    tab = sortedTab;
+    return sortedTab;
 }
 
 async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
     /*generated _toc_<version>_<language>.yml and index.html for each {version, language}*/
     tocsMapLanguage.forEach(function (unsortedValue, key, map) {
-        //var value = Object.assign({}, unsortedValue);
-        var value = unsortedValue.slice();
-        sortWithOrder(value);
+        var value = sortWithOrder(unsortedValue);
         var output = yaml.dump(value, { indent: 4 });
         var destTocName = helpers.genTocfileName(key, section.version);
         var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
