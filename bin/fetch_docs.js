@@ -318,7 +318,7 @@ async function ReadBook(section, bookConfig) {
         if (book.order) order = book.order;
         book.language = config.LANG_DEFAULT;
         var toc = {
-            name: book.title,
+            name: bookConfig.name ? bookConfig.name : book.title,
             id: bookConfig.id,
             orderBook: bookConfig.idNb,
             order: order,
