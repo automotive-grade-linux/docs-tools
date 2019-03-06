@@ -272,33 +272,43 @@ function countNumberOfMarkdown(section, bookContent, bookConfig) {
     });
 }
 
+function createBookPdf(bookConfig) {
+    var bookContent = {};
+    if (!bookConfig.name) {
+        bookConfig.name = path.basename(bookConfig.path).replace(".pdf", "");
+    }
+    var chp = {
+        name: bookConfig.name,
+        url: bookConfig.path,
+    };
+    var bk = {
+        title: bookConfig.name,
+        chapters: [chp],
+    };
+    bookContent.books = [];
+    bookContent.books.push(bk);
+    return bookContent;
+}
+
 /*ReadBook: read a book yml file*/
 async function ReadBook(section, bookConfig) {
     var bookContent = {};
     // get book
     if(isPdf(bookConfig.path)) {
-        if(!bookConfig.name) {
-            bookConfig.name = path.basename(bookConfig.path).replace(".pdf","");
-        }
-        var chp = {
-            name: bookConfig.name,
-            url: bookConfig.path,
-        };
-        var bk = {
-            title: bookConfig.name,
-            chapters: [chp],
-        };
-        bookContent.books = [];
-        bookContent.books.push(bk);
+        bookContent = createBookPdf(bookConfig);
     } else {
         try {
             bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
             if(section.brotherBooks[bookConfig.id]) {
-                var tab = section.brotherBooks[bookConfig.id];
-                var iterator = tab.keys();
+                var brotherBooks = section.brotherBooks[bookConfig.id];
+                var iterator = brotherBooks.keys();
                 for (let key of iterator) {
-                    var tmpLocalPath = tab[key];
-                    var tmpBookContent = yaml.load(fse.readFileSync(tmpLocalPath));
+                    var tmpBookContent;
+                    if(isPdf(brotherBooks[key].localPath)) {
+                        tmpBookContent = createBookPdf(brotherBooks[key]);
+                    } else {
+                        tmpBookContent = yaml.load(fse.readFileSync(brotherBooks[key].localPath));
+                    }
                     bookContent.books[0].chapters = bookContent.books[0].chapters.concat(tmpBookContent.books[0].chapters);
                 }
             }
