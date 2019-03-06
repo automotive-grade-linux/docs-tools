@@ -273,7 +273,7 @@ function countNumberOfMarkdown(section, bookContent, bookConfig) {
 }
 
 /*ReadBook: read a book yml file*/
-async function ReadBook(section, bookConfig, tocsMapLanguage) {
+async function ReadBook(section, bookConfig) {
     var bookContent = {};
     // get book
     if(isPdf(bookConfig.path)) {
@@ -331,7 +331,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
             toc: toc,
             bookConfig: bookConfig,
             dstDir: dstDir,
-            tocsMapLanguage: tocsMapLanguage,
+            tocsMapLanguage: section.tocsMapLanguage,
             section: section,
             src_prefix: book.src_prefix,
             url_edit: book.url_edit || global.url_edit,
@@ -339,7 +339,7 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
 
         ReadChapters(book.chapters, chapterData);
         /*push new toc in toc language map*/
-        var tocs = tocsMapLanguage.get(book.language);
+        var tocs = section.tocsMapLanguage.get(book.language);
         if (!tocs) {
             tocs = [];
         }
@@ -386,21 +386,21 @@ async function ReadBook(section, bookConfig, tocsMapLanguage) {
         tocs.sort(function (toc1, toc2) {
             return toc1.orderBook - toc2.orderBook;
         });
-        tocsMapLanguage.set(book.language, tocs);
+        section.tocsMapLanguage.set(book.language, tocs);
     }
     //TOFIX: better to do it only at the end
-    GenerateDataTocsAndIndex(tocsMapLanguage, section);
+    GenerateDataTocsAndIndex(section);
 }
 
-async function downloadBook(url, dst, section, bookConfig, tocsMapLanguage) {
-    if(isPdf(url)) {
-        ReadBook(section, bookConfig, tocsMapLanguage);
+async function downloadBook(section, bookConfig) {
+    if(isPdf(bookConfig.url)) {
+        ReadBook(section, bookConfig);
     } else {
-        var outFile = downloadFile(url, dst, true);
+        var outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
 
         outFile.on("finish", function () {
             if(!bookConfig.brother) {
-                ReadBook(section, bookConfig, tocsMapLanguage);
+                ReadBook(section, bookConfig);
             }
         });
     }
@@ -410,21 +410,35 @@ function isPdf(name) {
     return name.endsWith(".pdf");
 }
 
-function SetUrl(section, sectionBook, bookConfig) {
+function SetUrl(section, sectionContent, bookConfig) {
+    var overloadConfig;
+    if(fse.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
+        overloadConfig = yaml.load(fse.readFileSync(config.FETCH_CONFIG_OVERLOAD));
+    }
+    for (var idx2 in overloadConfig) {
+        var overload = overloadConfig[idx2];
+        if ((bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
+            (bookConfig.id && (overload.id == bookConfig.id))) {
+            bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
+            bookConfig.git_commit = overload.git_commit;
+            if(VERBOSE) console.log("overload config for %s", overload.git_name ? overload.git_name : overload.id);
+        }
+    }
+
     var url;
-    if (!bookConfig.git_commit && !sectionBook.git_commit) {
+    if (!bookConfig.git_commit && !sectionContent.git_commit) {
         bookConfig.git_commit = section.version;
     }
     if (isPdf(bookConfig.path)) {
-        bookConfig.path = bookConfig.path.replace("%commit%", (bookConfig.git_commit || sectionBook.git_commit));
+        bookConfig.path = bookConfig.path.replace("%commit%", (bookConfig.git_commit || sectionContent.git_commit));
         url = bookConfig.path;
     } else {
-        url = bookConfig.url_fetch || sectionBook.url_fetch;
+        url = bookConfig.url_fetch || sectionContent.url_fetch;
         url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
         url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
         url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
         url = url.replace("%repo%", bookConfig.git_name);
-        url = url.replace("%commit%", (bookConfig.git_commit || sectionBook.git_commit));
+        url = url.replace("%commit%", (bookConfig.git_commit || sectionContent.git_commit));
         url = url.replace("%source%", bookConfig.path);
         url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
         url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
@@ -434,58 +448,47 @@ function SetUrl(section, sectionBook, bookConfig) {
 }
 
 /*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
-async function FetchBooks(section, sectionBook, tocsMapLanguage) {
-    var overloadConfig;
-    if(fse.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
-        overloadConfig = yaml.load(fse.readFileSync(config.FETCH_CONFIG_OVERLOAD));
-    }
+//async function FetchBooks(section, sectionContent, tocsMapLanguage) {
+async function FetchBooks(section, sectionContent) {
 
     /*for each books*/
-    for (var idx in sectionBook.books) {
-        var bookConfig = sectionBook.books[idx];
+    for (var idx in sectionContent.books) {
+        var bookConfig = sectionContent.books[idx];
         //append books
         if(bookConfig.appendBooks) {
-                var appendsectionBook = Object.assign({}, sectionBook);
-                appendsectionBook.books = Object.assign({}, bookConfig.appendBooks);
-                appendsectionBook.brother = bookConfig.id;
-                await FetchBooks(section, appendsectionBook, tocsMapLanguage);
+                var appendsectionContent = Object.assign({}, sectionContent);
+                appendsectionContent.books = Object.assign({}, bookConfig.appendBooks);
+                appendsectionContent.brother = bookConfig.id;
+                await FetchBooks(section, appendsectionContent);
                 if(!section.brotherBooks[bookConfig.id]) {
                     console.error("ERROR: brotherBooks should not empty");
                     process.exit(1);
                 }
         }
         if (bookConfig.path) {
-            for(var idx2 in overloadConfig) {
-                var overload = overloadConfig[idx2];
-                if( (bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
-                    (bookConfig.id && (overload.id == bookConfig.id)) ) {
-                        bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
-                        bookConfig.git_commit = overload.git_commit;
-                }
-            }
-            if(sectionBook.parent) bookConfig.parent = sectionBook.parent;
+            if(sectionContent.parent) bookConfig.parent = sectionContent.parent;
             if(bookConfig.books) bookConfig.childBook = true;
             bookConfig.idNb = idx;
-            bookConfig.nbBooks = sectionBook.books.length;
+            bookConfig.nbBooks = sectionContent.books.length;
 
-            bookConfig.url = SetUrl(section, sectionBook, bookConfig);
+            bookConfig.url = SetUrl(section, sectionContent, bookConfig);
             bookConfig.fileName = bookConfig.id + "-" + path.basename(bookConfig.path);
             bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, section.version, bookConfig.fileName);
-            if(sectionBook.brother) {
-                bookConfig.brother = sectionBook.brother;
-                if(!section.brotherBooks[sectionBook.brother]) {
-                    section.brotherBooks[sectionBook.brother] = [];
+            if(sectionContent.brother) {
+                bookConfig.brother = sectionContent.brother;
+                if(!section.brotherBooks[sectionContent.brother]) {
+                    section.brotherBooks[sectionContent.brother] = [];
                 }
-                section.brotherBooks[sectionBook.brother].push(bookConfig.localPath);
+                section.brotherBooks[sectionContent.brother].push(bookConfig.localPath);
             }
-            downloadBook(bookConfig.url, bookConfig.localPath, section, bookConfig, tocsMapLanguage);
+            downloadBook(section, bookConfig);
         }
         //children books
         if(bookConfig.books) {
-            var subsectionBook = Object.assign({}, sectionBook);
-            subsectionBook.books = Object.assign({}, bookConfig.books);
-            subsectionBook.parent = bookConfig.id;
-            FetchBooks(section, subsectionBook, tocsMapLanguage);
+            var subsectionContent = Object.assign({}, sectionContent);
+            subsectionContent.books = Object.assign({}, bookConfig.books);
+            subsectionContent.parent = bookConfig.id;
+            FetchBooks(section, subsectionContent, section.tocsMapLanguage);
         }
     }
 }
@@ -513,9 +516,9 @@ function sortWithOrder(tab) {
     return sortedTab;
 }
 
-async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
+async function GenerateDataTocsAndIndex(section) {
     /*generated _toc_<version>_<language>.yml and index.html for each {version, language}*/
-    tocsMapLanguage.forEach(function (unsortedValue, key, map) {
+    section.tocsMapLanguage.forEach(function (unsortedValue, key, map) {
         var value = sortWithOrder(unsortedValue);
         var output = yaml.dump(value, { indent: 4 });
         var destTocName = helpers.genTocfileName(key, section.version);
@@ -537,14 +540,14 @@ async function GenerateDataTocsAndIndex(tocsMapLanguage, section) {
 async function ParseSection(argv, section) {
     // get section
     try {
-        var sectionBook = yaml.load(fse.readFileSync(section.file));
+        var sectionContent = yaml.load(fse.readFileSync(section.file));
     } catch (error) {
         console.error("ERROR: reading [%s] error=[%s]", section.file, error);
         process.exit(1);
     }
-    section.title = sectionBook.name;
+    section.title = sectionContent.name;
 
-    FetchBooks(section, sectionBook, section.tocsMapLanguage);
+    FetchBooks(section, sectionContent);
 }
 
 function main(conf, argv, nextRequest) {
@@ -561,7 +564,7 @@ function main(conf, argv, nextRequest) {
         var tocDir = path.join(config.TOCS_DIR, tocs[item]);
         var regexSection = /section_(\w+)\.yml/g;
         var sectionsConf = fse.readdirSync(tocDir);
-        var sectionConfArray
+        var sectionConfArray;
         while ((sectionConfArray = regexSection.exec(sectionsConf)) !== null) {
             var section = {
                 name: tocs[item],
