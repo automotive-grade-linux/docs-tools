@@ -304,6 +304,7 @@ async function ReadBook(section, bookConfig) {
                 var iterator = brotherBooks.keys();
                 for (let key of iterator) {
                     var tmpBookContent;
+                    await bookConfig.outFile;
                     if(isPdf(brotherBooks[key].localPath)) {
                         tmpBookContent = createBookPdf(brotherBooks[key]);
                     } else {
@@ -406,9 +407,9 @@ async function downloadBook(section, bookConfig) {
     if(isPdf(bookConfig.url)) {
         ReadBook(section, bookConfig);
     } else {
-        var outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
+        bookConfig.outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
 
-        outFile.on("finish", function () {
+        bookConfig.outFile.on("finish", function () {
             if(!bookConfig.brother) {
                 ReadBook(section, bookConfig);
             }
@@ -489,7 +490,7 @@ async function FetchBooks(section, sectionContent) {
                 if(!section.brotherBooks[sectionContent.brother]) {
                     section.brotherBooks[sectionContent.brother] = [];
                 }
-                section.brotherBooks[sectionContent.brother].push(bookConfig.localPath);
+                section.brotherBooks[sectionContent.brother].push(bookConfig);
             }
             downloadBook(section, bookConfig);
         }
