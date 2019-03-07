@@ -25,6 +25,7 @@ var helpers = require("../lib/misc_helpers");
 var config;
 var doneCB;
 var VERBOSE;
+var DEFAULT_ORDER = 50;
 
 //parse markdown to get images
 async function parseMarkdown(contents, url, pathMd) {
@@ -201,7 +202,7 @@ async function ReadChapters(chapters, chapterData) {
 
             var chapterToc = {
                 name: chapter.name,
-                order: 50,
+                order: chapter.order ? chapter.order : DEFAULT_ORDER,
                 orderBook: 0,
                 url: newUrl,
             }
@@ -219,7 +220,7 @@ async function ReadChapters(chapters, chapterData) {
 
             var subToc = {
                 name: chapter.name,
-                order: 50,
+                order: chapter.order ? chapter.order : DEFAULT_ORDER,
                 orderBook: 0,
                 children: [],
             };
@@ -324,7 +325,7 @@ async function ReadBook(section, bookConfig) {
     /*loop on books*/
     for (var idxBook in bookContent.books) {
         //var bookLangs = bookContent.books[idxBook];
-        var order = 50;
+        var order = DEFAULT_ORDER;
         var book = bookContent.books[idxBook];
         if (book.order) order = book.order;
         book.language = config.LANG_DEFAULT;
@@ -332,7 +333,7 @@ async function ReadBook(section, bookConfig) {
             name: bookConfig.name ? bookConfig.name : book.title,
             id: bookConfig.id,
             orderBook: bookConfig.idNb,
-            order: order,
+            order: bookConfig.order ? bookConfig.order : order,
             children: [],
         };
         var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
@@ -363,7 +364,7 @@ async function ReadBook(section, bookConfig) {
                 tocElement = {
                     name: book.title,
                     id: bookConfig.parent,
-                    order: 50,
+                    order: bookConfig.order ? bookConfig.order : DEFAULT_ORDER,
                     orderBook: bookConfig.idNb,
                     children: [],
                 };
