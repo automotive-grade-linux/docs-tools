@@ -347,7 +347,7 @@ function handleTocs(section, bookConfig, book, toc) {
             if (element.id == bookConfig.id)
                 return element;
         });
-        if (tocElement && bookConfig.childBook) {
+        if (tocElement && tocElement != toc && bookConfig.childBook) {
             toc.children = toc.children.concat(tocElement.children);
             tocElement.children.sort(function (toc1, toc2) {
                 return toc1.orderBook - toc2.orderBook;
