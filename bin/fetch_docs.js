@@ -291,6 +291,84 @@ function createBookPdf(bookConfig) {
     return bookContent;
 }
 
+function handleTocs(section, bookConfig, book, toc) {
+    /*push new toc in toc language map*/
+    var tocs = section.tocsMapLanguage.get(book.language);
+    if (!tocs) {
+        tocs = [];
+    }
+    var currentId;
+
+    if(bookConfig.brother) {
+        toc.id = bookConfig.brother;
+        //looking for brothers
+        var tocBrother = tocs.find(function (element) {
+            if (element.id == bookConfig.brother)
+                return element;
+        });
+        if(tocBrother) {
+            //big brother
+            if(bookConfig.id == bookConfig.brother) {
+                toc.children = toc.children.concat(tocBrother.children);
+                var idxBrother = tocs.indexOf(tocBrother);
+                if (idxBrother < 0) {
+                    console.error("ERROR: " + idxTocs + ": < 0, tocBrother not found");
+                    process.exit(-1);
+                }
+                tocs[idxBrother] = toc;
+            } else {
+                tocBrother.children = tocBrother.children.concat(toc.children);
+            }
+        } else {
+            tocs.push(toc);
+        }
+    }
+    if (bookConfig.parent) { //it is a child book
+        var tocElement = tocs.find(function (element) {
+            if (element.id == bookConfig.parent)
+                return element;
+        });
+        if (!tocElement) { //no parent found for now
+            tocElement = {
+                name: book.title,
+                id: bookConfig.parent,
+                order: bookConfig.order ? bookConfig.order : DEFAULT_ORDER,
+                orderBook: bookConfig.idNb,
+                children: [],
+            };
+            tocs.push(tocElement);
+        }
+        tocElement.children.push(toc);
+        tocElement.children.sort(function (toc1, toc2) {
+            return toc1.orderBook - toc2.orderBook;
+        });
+    } else { //parent book
+        var tocElement = tocs.find(function (element) {
+            if (element.id == bookConfig.id)
+                return element;
+        });
+        if (tocElement && bookConfig.childBook) {
+            toc.children = toc.children.concat(tocElement.children);
+            tocElement.children.sort(function (toc1, toc2) {
+                return toc1.orderBook - toc2.orderBook;
+            });
+            var idxTocs = tocs.indexOf(tocElement);
+            if (idxTocs < 0) {
+                console.error("ERROR: " + idxTocs + ": < 0, tocElement not found");
+                process.exit(-1);
+            }
+            tocs[idxTocs] = toc;
+            //tocElement = toc;
+        } else if(!bookConfig.brother){
+            tocs.push(toc);
+        }
+    }
+    tocs.sort(function (toc1, toc2) {
+        return toc1.orderBook - toc2.orderBook;
+    });
+    section.tocsMapLanguage.set(book.language, tocs);
+}
+
 /*ReadBook: read a book yml file*/
 async function ReadBook(section, bookConfig) {
     var bookContent = {};
@@ -300,20 +378,6 @@ async function ReadBook(section, bookConfig) {
     } else {
         try {
             bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
-            if(section.brotherBooks[bookConfig.id]) {
-                var brotherBooks = section.brotherBooks[bookConfig.id];
-                var iterator = brotherBooks.keys();
-                for (let key of iterator) {
-                    var tmpBookContent;
-                    await bookConfig.outFile;
-                    if(isPdf(brotherBooks[key].localPath)) {
-                        tmpBookContent = createBookPdf(brotherBooks[key]);
-                    } else {
-                        tmpBookContent = yaml.load(fse.readFileSync(brotherBooks[key].localPath));
-                    }
-                    bookContent.books[0].chapters = bookContent.books[0].chapters.concat(tmpBookContent.books[0].chapters);
-                }
-            }
         } catch (error) {
             console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
             process.exit(1);
@@ -350,55 +414,7 @@ async function ReadBook(section, bookConfig) {
         };
 
         ReadChapters(book.chapters, chapterData);
-        /*push new toc in toc language map*/
-        var tocs = section.tocsMapLanguage.get(book.language);
-        if (!tocs) {
-            tocs = [];
-        }
-        if (bookConfig.parent) { //it is a child book
-            var tocElement = tocs.find(function (element) {
-                if (element.id == bookConfig.parent)
-                    return element;
-            });
-            if (!tocElement) {
-                tocElement = {
-                    name: book.title,
-                    id: bookConfig.parent,
-                    order: bookConfig.order ? bookConfig.order : DEFAULT_ORDER,
-                    orderBook: bookConfig.idNb,
-                    children: [],
-                };
-                tocs.push(tocElement);
-            }
-            tocElement.children.push(toc);
-            tocElement.children.sort(function (toc1, toc2) {
-                return toc1.orderBook - toc2.orderBook;
-            });
-        } else {
-            var tocElement = tocs.find(function (element) {
-                if (element.id == bookConfig.id)
-                    return element;
-            });
-            if (tocElement && bookConfig.childBook) {
-                toc.children = toc.children.concat(tocElement.children);
-                tocElement.children.sort(function (toc1, toc2) {
-                    return toc1.orderBook - toc2.orderBook;
-                });
-                var idxTocs = tocs.indexOf(tocElement);
-                if(idxTocs < 0) {
-                    console.error("ERROR: " + idxTocs + ": < 0, tocElement not found");
-                    process.exit(-1);
-                }
-                tocs[idxTocs] = toc;
-                //tocElement = toc;
-            } else {
-                tocs.push(toc);
-            }
-        }
-        tocs.sort(function (toc1, toc2) {
-            return toc1.orderBook - toc2.orderBook;
-        });
-        section.tocsMapLanguage.set(book.language, tocs);
+        handleTocs(section, bookConfig, book, toc);
     }
     //TOFIX: better to do it only at the end
     GenerateDataTocsAndIndex(section);
@@ -411,9 +427,7 @@ async function downloadBook(section, bookConfig) {
         bookConfig.outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
 
         bookConfig.outFile.on("finish", function () {
-            if(!bookConfig.brother) {
-                ReadBook(section, bookConfig);
-            }
+            ReadBook(section, bookConfig);
         });
     }
 }
@@ -467,15 +481,16 @@ async function FetchBooks(section, sectionContent) {
     for (var idx in sectionContent.books) {
         var bookConfig = sectionContent.books[idx];
         //append books
-        if(bookConfig.appendBooks) {
-                var appendsectionContent = Object.assign({}, sectionContent);
-                appendsectionContent.books = Object.assign({}, bookConfig.appendBooks);
-                appendsectionContent.brother = bookConfig.id;
-                await FetchBooks(section, appendsectionContent);
-                if(!section.brotherBooks[bookConfig.id]) {
-                    console.error("ERROR: brotherBooks should not empty");
-                    process.exit(1);
-                }
+        if (bookConfig.appendBooks) {
+            bookConfig.brother = bookConfig.id;
+            var appendsectionContent = Object.assign({}, sectionContent);
+            appendsectionContent.books = Object.assign({}, bookConfig.appendBooks);
+            appendsectionContent.brother = bookConfig.id;
+            FetchBooks(section, appendsectionContent);
+            if (!section.brotherBooks[bookConfig.id]) {
+                console.error("ERROR: brotherBooks should not empty");
+                process.exit(1);
+            }
         }
         if (bookConfig.path) {
             if(sectionContent.parent) bookConfig.parent = sectionContent.parent;
