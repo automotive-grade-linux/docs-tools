@@ -200,9 +200,13 @@ async function ReadChapters(chapters, chapterData) {
                 newUrl = path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html");
             }
 
+            var order = chapter.order ? chapter.order : DEFAULT_ORDER;
+            if(chapterData.bookConfig.brother != chapterData.bookConfig.id) {
+                order = chapterData.bookConfig.order ? chapterData.bookConfig.order : order;
+            }
             var chapterToc = {
                 name: chapter.name,
-                order: chapter.order ? chapter.order : DEFAULT_ORDER,
+                order: order,
                 orderBook: 0,
                 url: newUrl,
             }
@@ -310,6 +314,9 @@ function handleTocs(section, bookConfig, book, toc) {
             //big brother
             if(bookConfig.id == bookConfig.brother) {
                 toc.children = toc.children.concat(tocBrother.children);
+                toc.children.sort(function (toc1, toc2) {
+                    return toc1.orderBook - toc2.orderBook;
+                });
                 var idxBrother = tocs.indexOf(tocBrother);
                 if (idxBrother < 0) {
                     console.error("ERROR: " + idxTocs + ": < 0, tocBrother not found");
@@ -318,6 +325,9 @@ function handleTocs(section, bookConfig, book, toc) {
                 tocs[idxBrother] = toc;
             } else {
                 tocBrother.children = tocBrother.children.concat(toc.children);
+                tocBrother.children.sort(function (toc1, toc2) {
+                    return toc1.orderBook - toc2.orderBook;
+                });
             }
         } else {
             tocs.push(toc);
@@ -529,7 +539,7 @@ function sortWithOrder(tab) {
     for (let key of iterator) {
         var entry = tab[key];
         if(entry.children) {
-            sortWithOrder(entry.children);
+            entry.children = sortWithOrder(entry.children);
         }
         var idx = sortedTab.findIndex(function(newEntry) {
             return newEntry.order > entry.order;
