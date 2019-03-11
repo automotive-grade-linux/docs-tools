@@ -477,9 +477,21 @@ function SetUrl(section, sectionContent, bookConfig) {
     var url;
     if (!bookConfig.git_commit && !sectionContent.git_commit) {
         bookConfig.git_commit = section.version;
+    } else {
+        bookConfig.git_commit = bookConfig.git_commit || sectionContent.git_commit;
+    }
+    if(bookConfig.git_commit != section.version) {
+        if(VERBOSE) {
+            console.log("!!!WARNING!!! -- " +
+            " git_commit is " + bookConfig.git_commit +
+            " whereas version is " + section.version + "." +
+            " \n\t info [section: " + section.name +
+            " git_name: " + bookConfig.git_name +
+            " id: " + bookConfig.id + "] " );
+        }
     }
     if (isPdf(bookConfig.path)) {
-        bookConfig.path = bookConfig.path.replace("%commit%", (bookConfig.git_commit || sectionContent.git_commit));
+        bookConfig.path = bookConfig.path.replace("%commit%", bookConfig.git_commit);
         url = bookConfig.path;
     } else {
         url = bookConfig.url_fetch || sectionContent.url_fetch;
@@ -487,7 +499,7 @@ function SetUrl(section, sectionContent, bookConfig) {
         url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
         url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
         url = url.replace("%repo%", bookConfig.git_name);
-        url = url.replace("%commit%", (bookConfig.git_commit || sectionContent.git_commit));
+        url = url.replace("%commit%", bookConfig.git_commit);
         url = url.replace("%source%", bookConfig.path);
         url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
         url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
