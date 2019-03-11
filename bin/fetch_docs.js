@@ -493,10 +493,10 @@ async function FetchBooks(section, sectionContent) {
     for (var idx in sectionContent.books) {
         var bookConfig = sectionContent.books[idx];
         //append books
-        if (bookConfig.appendBooks) {
+        if (bookConfig.brotherBooks) {
             bookConfig.brother = bookConfig.id;
             var appendsectionContent = Object.assign({}, sectionContent);
-            appendsectionContent.books = Object.assign({}, bookConfig.appendBooks);
+            appendsectionContent.books = Object.assign({}, bookConfig.brotherBooks);
             appendsectionContent.brother = bookConfig.id;
             FetchBooks(section, appendsectionContent);
             if (!section.brotherBooks[bookConfig.id]) {
