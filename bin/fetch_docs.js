@@ -470,7 +470,7 @@ function SetUrl(section, sectionContent, bookConfig) {
             (bookConfig.id && (overload.id == bookConfig.id))) {
             bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
             bookConfig.git_commit = overload.git_commit;
-            if(VERBOSE) console.log("overload config for %s", overload.git_name ? overload.git_name : overload.id);
+            if(VERBOSE) console.log("!!!WARNING!!! overload config for %s", overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
         }
     }
 
