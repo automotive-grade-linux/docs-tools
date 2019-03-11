@@ -201,13 +201,15 @@ async function ReadChapters(chapters, chapterData) {
             }
 
             var order = chapter.order ? chapter.order : DEFAULT_ORDER;
+            var orderBook = 0;
             if(chapterData.bookConfig.brother != chapterData.bookConfig.id) {
                 order = chapterData.bookConfig.order ? chapterData.bookConfig.order : order;
+                orderBook = chapterData.bookConfig.idNb ? chapterData.bookConfig.idNb : orderBook;
             }
             var chapterToc = {
                 name: chapter.name,
                 order: order,
-                orderBook: 0,
+                orderBook: orderBook,
                 url: newUrl,
             }
 
