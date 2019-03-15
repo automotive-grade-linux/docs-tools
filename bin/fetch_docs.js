@@ -122,7 +122,7 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
 async function ReadChapters(chapters, chapterData) {
     for (var idx in chapters) {
         var chapter = chapters[idx];
-        chapter.orderBook = idx;
+        chapter.orderBook = Number(idx);
 
         /*if no children in chapter*/
         if (chapter.url) {
@@ -201,8 +201,8 @@ async function ReadChapters(chapters, chapterData) {
                 newUrl = path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html");
             }
 
-            var order = chapter.order ? chapter.order : DEFAULT_ORDER;
-            var orderBook = chapter.orderBook;
+            var order = Number(chapter.order ? chapter.order : DEFAULT_ORDER);
+            var orderBook = Number(chapter.orderBook);
             if (chapterData.bookConfig.brother) {
                 if (chapterData.bookConfig.brother != chapterData.bookConfig.id) {
                     order = chapterData.bookConfig.order ? chapterData.bookConfig.order : order;
@@ -230,7 +230,7 @@ async function ReadChapters(chapters, chapterData) {
             var subToc = {
                 name: chapter.name,
                 order: chapter.order ? chapter.order : DEFAULT_ORDER,
-                orderBook: 500,
+                orderBook: 0,
                 children: [],
             };
             subChapterData.toc = subToc;
@@ -318,6 +318,12 @@ function sortWithOrderBook(tab) {
     return sortedTab;
 }
 
+function setOrderBookForBrothers(brotherArray, offset) {
+    brotherArray.forEach(function(element) {
+        element.orderBook = Number(element.orderBook) + offset;
+    });
+}
+
 function handleTocs(section, bookConfig, book, toc) {
     /*push new toc in toc language map*/
     var tocs = section.tocsMapLanguage.get(book.language);
@@ -336,8 +342,9 @@ function handleTocs(section, bookConfig, book, toc) {
         if(tocBrother) {
             //big brother
             if(bookConfig.id == bookConfig.brother) {
+                toc.offset = toc.children.length;
+                setOrderBookForBrothers(tocBrother.children, toc.offset);
                 toc.children = toc.children.concat(tocBrother.children);
-                toc.children = sortWithOrderBook(toc.children);
                 var idxBrother = tocs.indexOf(tocBrother);
                 if (idxBrother < 0) {
                     console.error("ERROR: " + idxTocs + ": < 0, tocBrother not found");
@@ -345,10 +352,11 @@ function handleTocs(section, bookConfig, book, toc) {
                 }
                 tocs[idxBrother] = toc;
             } else {
+                setOrderBookForBrothers(toc.children, tocBrother.offset);
                 tocBrother.children = tocBrother.children.concat(toc.children);
-                tocBrother.children = sortWithOrderBook(tocBrother.children);
             }
         } else {
+            toc.offset = 0;
             tocs.push(toc);
         }
     }
@@ -361,7 +369,7 @@ function handleTocs(section, bookConfig, book, toc) {
             tocElement = {
                 name: book.title,
                 id: bookConfig.parent,
-                order: bookConfig.order ? bookConfig.order : DEFAULT_ORDER,
+                order: Number(bookConfig.order ? bookConfig.order : DEFAULT_ORDER),
                 orderBook: bookConfig.idNb,
                 children: [],
             };
@@ -419,8 +427,8 @@ async function ReadBook(section, bookConfig) {
         var toc = {
             name: bookConfig.name ? bookConfig.name : book.title,
             id: bookConfig.id,
-            orderBook: bookConfig.idNb,
-            order: bookConfig.order ? bookConfig.order : order,
+            orderBook: Number(bookConfig.idNb),
+            order: Number(bookConfig.order ? bookConfig.order : order),
             children: [],
         };
         var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
