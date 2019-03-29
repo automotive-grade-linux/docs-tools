@@ -44,9 +44,8 @@ function main () {
   }
   
   if (argv.conf ||argv.configs || argv.config) {
-     argv.vers = true;      
-     argv.defs = true;      
-     argv.tocs = true;
+     argv.vers = true;
+     argv.defs = true;
      argv.dict = true;
   }
         
@@ -79,13 +78,7 @@ function main () {
       utils.RequestQueue(config.GEN_DEFS, argv);
       success++;
   }
- 
-  if (argv.tocs) {
-      if (argv.verbose) console.log ("  - tocs = [%s]", config.GEN_TOCS);
-      utils.RequestQueue(config.GEN_TOCS, argv);
-      success++;
-  }
-  
+
   if (argv.dict) {
       if (argv.verbose) console.log ("  - dict = [%s]", config.GEN_DICT);
       utils.RequestQueue(config.GEN_DICT, argv);
@@ -109,7 +102,6 @@ function main () {
       console.log (' --vers (generate %s from templates at %s)', config.DEFAULTS_FILE, config.TOCS_DIR);
       console.log (' --defs (generate %s YAML for index pages)', config.DEFAULTS_FILE);
       console.log (' --dict (generate dictonaty page)', config.DEFAULTS_FILE);
-      console.log (' --tocs (generate TOC from templates at %s)', config.TOCS_DIR);
       console.log (' --html (generate HTML site to %s/%s)', config.DST_DEVL, config.DST_PROD);
       console.log ('   --prod  (production mode dest=%s)', config.DST_PROD);
       console.log ('   --serve (run localhost devel httpd)');
@@ -120,7 +112,7 @@ function main () {
       console.log (' --fetch [--dumponly --force] (update references from git default=%s)', config.FETCH_CONFIG);
       console.log (' --push  (push site to "%s")', config.PUSH_DEST);
       console.log (' --crawl [--prod] (check invalid links)');
-      console.log (' --config (vers+defs+dict+tocs)');
+      console.log (' --config (vers+defs+dict)');
       console.log (' --build (config+html)');
       console.log (' --all (build+push [but not fetch])');
       console.log (' --verbose (display steps)');

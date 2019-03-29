@@ -17,384 +17,630 @@
 
 "use strict";
 
-var fs            = require("fs");
-var fse           = require("fs-extra");
-var path          = require("path");
-var util          = require("util");
-var child_process = require("child_process");
-var yaml          = require("js-yaml");
-var helpers       = require("../lib/misc_helpers");
-var Writable      = require('stream').Writable;
+var fse = require("fs-extra");
+var path = require("path");
+var util = require("util");
+var yaml = require("js-yaml");
+var helpers = require("../lib/misc_helpers");
 var config;
-var getCount;
-var errorCount;
 var doneCB;
+var VERBOSE;
+var DEFAULT_ORDER = 50;
 
-function mkdirp (p) {
+//parse markdown to get images
+async function parseMarkdown(contents, url, pathMd) {
 
-    if (fs.existsSync(p)) return;
-    var ptree= p.split('/');
+    var regexArr = [
+        // Match reference   ![make-units](pictures/make-units.svg)
+        /\[.*\]\((.*\.(jpg|png|pdf|svg)).*\)/ig,
 
-    for (var idx=0; idx < ptree.length; idx++) {
-        var dirpath = ptree.slice(0,idx).join('/');
-        console.log ("idx=%s", idx, dirpath);
-        if (!fs.existsSync(dirpath)) fs.mkdir (dirpath);
-    }
-}
+        // Match reference   [afm-daemons]: pictures/afm-daemons.svg
+        /\[.*\]: *(.*\.(jpg|png|pdf|svg))/ig,
+    ];
 
-function isTextFile(p) {
-    var ext=path.extname(p);
-    // some extensions are not really extensions if they are too long.
-    // for example, for 'README.proprietary', we should consider that the extension is empty
-    if (ext.length>4) ext="";
-
-    return (0
-        || (ext==".md")
-        || (ext==".txt")
-        || (ext=="")
-    );
-}
-
-function getFrontMatter(text) {
-    var frontMatterString = helpers.getFrontMatterString(text);
-    if (frontMatterString !== null) {
-        return yaml.load(frontMatterString);
-    }
-    return {};
-}
-
-function setFrontMatter(text, frontMatter, options) {
-    var frontMatterString = yaml.dump(frontMatter, options);
-    return helpers.setFrontMatterString(text, frontMatterString);
-}
-
-
-function localCopy (argv, repo, document) {
-    var srcURI = repo.url_fetch.replace ("%source%", path.join (repo.src_prefix, document.source));
-    if (!document.destination) document.destination= path.join (repo.destination, document.source);
-    else document.destination = path.join(repo.destination, document.destination);
-
-    var outFileDir  = path.dirname(document.destination);
-    // create directory for the file if it doesn't exist
-    if (!fs.existsSync(outFileDir)) fse.mkdirsSync(outFileDir);
-
-    if (path.extname(srcURI)===".md"){
-        // open the file for writing
-        var outFile = fs.createWriteStream(document.destination);
-        var editURI  = ""
-        if (repo.url_edit) {
-            editURI = repo.url_edit.replace  ("%source%", path.join (repo.src_prefix, document.source));
-        }
-        // start a default front master
-        var newFrontMatter = {
-            edit_link: document.edit  || editURI || "",
-            title:     document.title || document.label,
-            origin_url: srcURI
-        };
-        var fileContents = '';
-        var fileContents = fs.readFileSync(srcURI, 'utf8');
-
-        // merge new front matter and file's own front matter (if it had any)
-        //
-        // NOTE:
-        //      newFrontMatter's properties should override those of fileFrontMatter
-        var fileFrontMatter   = getFrontMatter(fileContents);
-        var mergedFrontMatter = helpers.mergeObjects(fileFrontMatter, newFrontMatter);
-
-        // add a warning and set the merged file matter in the file
-        var contentsOnly = helpers.stripFrontMatter(fileContents);
-        contentsOnly     = repo.warning + contentsOnly;
-
-        var augmentedContents = setFrontMatter(contentsOnly, mergedFrontMatter);
-
-        // write out the file
-        outFile.end(augmentedContents);
-    } else {
-        fse.copy(srcURI, document.destination);
-    }
-}
-
-function downloadEntry(argv, repo, document) {
-    if (!document.destination) document.destination= path.join (repo.destination, document.source);
-    else document.destination = path.join(repo.destination, document.destination);
-    var outFileDir  = path.dirname(document.destination);
-
-    // If no Label Build one from source file name
-    if (!document.label) {
-        var label=path.basename (document.source, ".md");
-        label = label.split (/(?:-|_)+/);
-        document.label = label.join (" ");
-   };
-
-    // build fetch URI
-    var fetchURI = repo.url_fetch.replace ("%source%", path.join (repo.src_prefix, document.source));
-    if (repo.url_edit) var editURI  = repo.url_edit.replace  ("%source%", path.join (repo.src_prefix, document.source));
-
-    // start a default front master
-    var newFrontMatter = {
-        edit_link: document.edit  || editURI || "",
-        title:     document.title || document.label,
-        origin_url: fetchURI
-    };
-
-    // create directory for the file if it doesn't exist
-    if (!fs.existsSync(outFileDir)) fse.mkdirsSync(outFileDir);
-
-    // open the file for writing
-    var outFile = fs.createWriteStream(document.destination);
-    getCount ++;
-
-    if (argv.verbose) console.log ("      < src=%s", fetchURI);
-
-    // open an HTTP request for the file
-    var protocol;
-    if (fetchURI.startsWith("http:")) {
-        protocol=require("http");
-    }
-    else if (fetchURI.startsWith("https:")) {
-        protocol=require("https");
-    }
-    else {
-        console.error("ERROR: " + fetchURI + ": protocol not recognized");
-    }
-    var request= protocol.get(fetchURI, function (response) {
-
-        if (argv.verbose) console.log ("      > dst=%s", document.destination);
-
-        if (response.statusCode !== 200) {
-            console.error("ERROR: " + fetchURI + ": got %s errCount=%d", response.statusCode, errorCount);
-            errorCount++;
-        }
-
-        // read in the response
-        var fileContents = '';
-        if (isTextFile(document.source))
-            response.setEncoding('utf8');
-        else
-            response.setEncoding('binary');
-
-        response.on('data', function (data) {
-            fileContents += data;
-        });
-
-        // process the response when it finishes
-        response.on('end', function () {
-
-            if (isTextFile(document.source)) {
-                // merge new front matter and file's own front matter (if it had any)
-                //
-                // NOTE:
-                //      newFrontMatter's properties should override those of fileFrontMatter
-                var fileFrontMatter   = getFrontMatter(fileContents);
-                var mergedFrontMatter = helpers.mergeObjects(fileFrontMatter, newFrontMatter);
-
-                // add a warning and set the merged file matter in the file
-                var contentsOnly = helpers.stripFrontMatter(fileContents);
-                contentsOnly     = repo.warning + contentsOnly;
-
-                var augmentedContents = setFrontMatter(contentsOnly, mergedFrontMatter);
-
-                // write out the file
-                outFile.end(augmentedContents);
+    regexArr.forEach(function(rx) {
+        var imageRes;
+        while ((imageRes = rx.exec(contents)) !== null) {
+            var image = imageRes[1].replace(/\s+/, "");
+            //ignore links
+            if (!image.startsWith("http")) {
+                var imageUrl = url.replace(path.basename(pathMd), image);
+                var imageDst = path.join(path.dirname(pathMd), image);
+                downloadFile(imageUrl, imageDst, false);
             }
-            else {
-                // write out the file with frontmatter (not a markdown file)
-                outFile.end(fileContents,'binary');
-            }
-
-            outFile.on('finish', function() {
-                getCount --;
-
-                if (getCount === 0) {
-                    if (argv.verbose) console.log ("  + Fetch done");
-                    if (doneCB) doneCB();
-                }
-            });
-        });
-
-    }); // http request
-
-    request.on ('error', function(e) {
-            console.error("Hoop: fetch URL=%s fail err=[%s]", fetchURI,  e);
-            errorCount ++;
+        }
     });
 }
 
-// main
-function FetchFiles (argv, item, fetchconf, version) {
-    var targetVersion  = config.VERSION_TAGDEV;
-    var targetLanguage = config.LANG_DEFAULT;
-    var destination    = path.join (config.DOCS_DIR, item, targetLanguage, targetVersion, config.FETCH_DIR);
+/*needed to be proceed by jekyll*/
+function setFrontMatter(fetchconf, frontMatter, options) {
+    var frontMatterString = yaml.dump(frontMatter, options);
+    var text =  util.format ("<!-- WARNING: This file is generated by %s using %s -->\n\n", path.basename(__filename), fetchconf);
 
-    // get config
-    var fetchConfig   = fs.readFileSync(fetchconf);
-    try {
-        var tocConfig = yaml.load(fetchConfig);
-    } catch (error) {
-        console.log ("ERROR: reading [%s] error=[%s]", fetchconf, error);
-        process.exit(1);
+    return helpers.setFrontMatterString(text, frontMatterString);
+}
+
+function handleResponse(url, dst, isTextFile, frontMatter, response, outFile) {
+    if (isTextFile) response.setEncoding('utf8');
+    else response.setEncoding('binary');
+
+    var fileContents = '';
+    //front matter is needed to be proceed by jekyll
+    if (frontMatter) fileContents = frontMatter;
+    response.on('data', function (data) {
+        fileContents += data;
+    });
+    response.on('end', function () {
+        //parse data to get images
+        if (isTextFile) {
+            parseMarkdown(fileContents, url, dst);
+            outFile.end(fileContents);
+        }
+        else outFile.end(fileContents, 'binary');
+    });
+}
+
+/*download file*/
+function downloadFile(url, dst, isTextFile, frontMatter) {
+    if (!fse.existsSync(path.dirname(dst))) { fse.mkdirsSync(path.dirname(dst)); }
+    var outFile = fse.createWriteStream(dst);
+
+    if (fse.existsSync(url)) { //local fetch
+        var inFile = fse.createReadStream(url);
+        handleResponse(url, dst, isTextFile, frontMatter, inFile, outFile);
+        outFile.on('finish', function () {
+            if (VERBOSE) console.log(" --- Local Fetch " + dst + " done");
+        });
+        return outFile;
+    } else {
+        var protocol;
+        if (url.startsWith("http:")) protocol = require("http");
+        else if (url.startsWith("https:")) protocol = require("https");
+        else {
+            console.error("ERROR: " + url + ": protocol not recognized");
+            process.exit(-1);
+        }
+
+        protocol.get(url, function (response) {
+            if (response.statusCode !== 200) {
+                console.error("ERROR: " + url + ": got %s", response.statusCode);
+                return;
+            }
+            handleResponse(url, dst, isTextFile, frontMatter, response, outFile);
+            outFile.on('finish', function () {
+                if (VERBOSE) console.log(" --- Fetch " + dst + " done");
+            });
+        }).on('error', function (e) {
+            console.error("ERROR: " + e.message);
+            process.exit(-1);
+        });
+    }
+    return outFile;
+}
+
+/*ReadChapters: read chapter section in yml*/
+async function ReadChapters(chapters, chapterData) {
+    for (var idx in chapters) {
+        var chapter = chapters[idx];
+        chapter.orderBook = Number(idx);
+
+        /*if no children in chapter*/
+        if (chapter.url) {
+            var url, dst, dstFilename, pathDirName;
+
+            // FIXME: for now don't support any lang
+            chapter.url = chapter.url.replace("%lang%/", "");
+            dstFilename = path.basename(chapter.url);
+
+            // Build source url and dst file
+            if(isPdf(chapter.url)) {
+                pathDirName = "";
+                dst = chapterData.dstDir;
+            } else {
+                pathDirName = path.dirname(chapter.url);
+                dst = path.join(chapterData.dstDir, pathDirName);
+            }
+
+            // dst_prefix : common destination prefix directory
+            if (chapterData.bookConfig.dst_prefix && chapterData.bookConfig.dst_prefix != "") {
+                dst = path.join(chapterData.dstDir, chapterData.bookConfig.dst_prefix, pathDirName);
+            }
+
+            // src_prefix : common source prefix directory for all url of a chapter
+            if (chapterData.src_prefix && chapterData.src_prefix != "") {
+                chapter.url = path.join(chapterData.src_prefix, chapter.url)
+            }
+
+            // destination : allow to rename markdown filename in website
+            if (chapter.destination && chapter.destination != "") {
+                dstFilename = chapter.destination;
+            }
+
+            if(isPdf(chapter.url)) {
+                url = chapter.url;
+            } else {
+                url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+            }
+            dst = path.join(dst, dstFilename);
+
+            if (fse.existsSync(dst)) {
+                console.error("ERROR destination file already exists :");
+                console.error("  fetch url :", url);
+                console.error("  destination file :", dst);
+                process.exit(-2);
+            }
+            /* TODO: cleanup if ok to have unique files
+            var subId = 0;
+            while (fse.existsSync(dst)) { //if file already exists rename it
+                var newName = idx.toString() + "." + subId.toString() + "__" + path.basename(chapter.url);
+                dst = path.join(chapterData.dstDir,  path.join(path.dirname(chapter.url), newName));
+                if (VERBOSE) console.log(" WARNING: %s already exists renamed into %s", dst, newName);
+                subId = parseInt(subId) + 1;
+            }
+            */
+
+            if (!fse.existsSync(dst)) fse.mkdirsSync(path.dirname(dst));
+
+            var editURI  = ""
+            if (chapterData.url_edit) {
+                editURI = chapterData.url_edit.replace  ("%source%", path.join (chapterData.src_prefix, chapter.url));
+            }
+
+            var newFrontMatter = {
+                edit_link: editURI || "",
+                title:     chapter.name,
+                origin_url: url,
+            };
+
+            var newUrl;
+            if(url.endsWith(".pdf")) {
+                downloadFile(url, dst, false, "");
+                newUrl = path.join("reference", path.relative(chapterData.dstDir, dst));
+            }else {
+                downloadFile(url, dst, true, setFrontMatter(chapterData.bookConfig.localPath, newFrontMatter));
+                newUrl = path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html");
+            }
+
+            var order = Number(chapter.order ? chapter.order : DEFAULT_ORDER);
+            var orderBook = Number(chapter.orderBook);
+            if (chapterData.bookConfig.brother) {
+                if (chapterData.bookConfig.brother != chapterData.bookConfig.id) {
+                    order = chapterData.bookConfig.order ? chapterData.bookConfig.order : order;
+                    orderBook = chapterData.bookConfig.idNb ? chapterData.bookConfig.idNb : orderBook;
+                }
+            }
+            var chapterToc = {
+                name: chapter.name,
+                order: order,
+                orderBook: orderBook,
+                url: newUrl,
+            }
+
+            //push new chapterToc for generated yml file
+            chapterData.toc.children.push(chapterToc);
+
+            var section = chapterData.section;
+            var nbDownload = chapterData.section.mapNbMarkdownDownloaded.get(chapterData.language);
+            nbDownload += 1;
+            chapterData.section.mapNbMarkdownDownloaded.set(chapterData.language, nbDownload);
+
+        } else if (chapter.children) { //if children call recursively ReadChapters
+            var subChapterData = Object.assign({}, chapterData);
+
+            var subToc = {
+                name: chapter.name,
+                order: chapter.order ? chapter.order : DEFAULT_ORDER,
+                orderBook: 0,
+                children: [],
+            };
+            subChapterData.toc = subToc;
+            ReadChapters(chapter.children, subChapterData);
+            chapterData.toc.children.push(subToc);
+        }
+    }
+}
+
+function countNumberOfMarkdownChildren(chapters) {
+    var nb = 0;
+    for (var idx in chapters) {
+        var chapter = chapters[idx];
+        if (chapter.url) nb += 1;
+        if (chapter.children) nb += countNumberOfMarkdownChildren(chapter.children, nb);
+    }
+    return nb;
+}
+
+function countNumberOfMarkdown(section, bookContent, bookConfig) {
+    if (!bookConfig.mapNbMarkdown) bookConfig.mapNbMarkdown = new Map();
+    var map = bookConfig.mapNbMarkdown;
+    for (var idxBook in bookContent.books) {
+        var bookLangs = bookContent.books[idxBook];
+        /*loop on languages*/
+        for (var idxBookLang in bookLangs.languages) {
+            var book = bookLangs.languages[idxBookLang];
+            var nb = countNumberOfMarkdownChildren(book.chapters);
+            if (map.has(book.language))
+                nb += map.get(book.language);
+            map.set(book.language, nb);
+        }
     }
 
-    var overloadConfig;
-    if(fs.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
-        overloadConfig = yaml.load(fs.readFileSync(config.FETCH_CONFIG_OVERLOAD));
-        console.log(overloadConfig);
+    bookConfig.mapNbMarkdown.forEach(function (value, key, map) {
+        var nbTotal = value;
+        if (!section.mapNbMarkdownDownloaded.has(key)) {
+            section.mapNbMarkdownDownloaded.set(key, 0);
+        }
+        if (section.mapNbMarkdown.has(key)) {
+            nbTotal += section.mapNbMarkdown.get(key);
+        }
+        section.mapNbMarkdown.set(key, nbTotal);
+
+        if (VERBOSE) {
+            console.log("--- In " + bookConfig.fileName + ": Found "
+                + value + " markdown files for " + key + " language. The total found is " + section.mapNbMarkdown.get(key));
+        }
+    });
+}
+
+function createBookPdf(bookConfig) {
+    var bookContent = {};
+    if (!bookConfig.name) {
+        bookConfig.name = path.basename(bookConfig.path).replace(".pdf", "");
     }
+    var chp = {
+        name: bookConfig.name,
+        url: bookConfig.path,
+    };
+    var bk = {
+        title: bookConfig.name,
+        chapters: [chp],
+    };
+    bookContent.books = [];
+    bookContent.books.push(bk);
+    return bookContent;
+}
 
+function sortWithOrderBook(tab) {
+    var sortedTab = [];
 
-    // get version
-    if (fs.existsSync (version)) {
-        var fetchVersion   = fs.readFileSync(version);
+    var iterator = tab.keys();
+    for (let key of iterator) {
+        var entry = tab[key];
+        var idx = sortedTab.findIndex(function(newEntry) {
+            return newEntry.orderBook > entry.orderBook;
+        });
+        idx = idx < 0 ? sortedTab.length : idx;
+        var tmpSortedTab = sortedTab.slice(idx)
+        var sortedTab = sortedTab.slice(0, idx);
+        sortedTab.push(entry);
+        sortedTab = sortedTab.concat(tmpSortedTab);;
+    }
+    return sortedTab;
+}
+
+function setOrderBookForBrothers(brotherArray, offset) {
+    brotherArray.forEach(function(element) {
+        element.orderBook = Number(element.orderBook) + offset;
+    });
+}
+
+function handleTocs(section, bookConfig, book, toc) {
+    /*push new toc in toc language map*/
+    var tocs = section.tocsMapLanguage.get(book.language);
+    if (!tocs) {
+        tocs = [];
+    }
+    var currentId;
+
+    if(bookConfig.brother) {
+        toc.id = bookConfig.brother;
+        //looking for brothers
+        var tocBrother = tocs.find(function (element) {
+            if (element.id == bookConfig.brother)
+                return element;
+        });
+        if(tocBrother) {
+            //big brother
+            if(bookConfig.id == bookConfig.brother) {
+                toc.offset = toc.children.length;
+                setOrderBookForBrothers(tocBrother.children, toc.offset);
+                toc.children = toc.children.concat(tocBrother.children);
+                var idxBrother = tocs.indexOf(tocBrother);
+                if (idxBrother < 0) {
+                    console.error("ERROR: " + idxTocs + ": < 0, tocBrother not found");
+                    process.exit(-1);
+                }
+                tocs[idxBrother] = toc;
+            } else {
+                setOrderBookForBrothers(toc.children, tocBrother.offset);
+                tocBrother.children = tocBrother.children.concat(toc.children);
+            }
+        } else {
+            toc.offset = 0;
+            tocs.push(toc);
+        }
+    }
+    if (bookConfig.parent) { //it is a child book
+        var tocElement = tocs.find(function (element) {
+            if (element.id == bookConfig.parent)
+                return element;
+        });
+        if (!tocElement) { //no parent found for now
+            tocElement = {
+                name: book.title,
+                id: bookConfig.parent,
+                order: Number(bookConfig.order ? bookConfig.order : DEFAULT_ORDER),
+                orderBook: bookConfig.idNb,
+                children: [],
+            };
+            tocs.push(tocElement);
+        }
+        tocElement.children.push(toc);
+        tocElement.children = sortWithOrderBook(tocElement.children);
+    } else { //parent book
+        var tocElement = tocs.find(function (element) {
+            if (element.id == bookConfig.id)
+                return element;
+        });
+        if (tocElement && tocElement != toc && bookConfig.childBook) {
+            toc.children = toc.children.concat(tocElement.children);
+            toc.children = sortWithOrderBook(toc.children);
+            var idxTocs = tocs.indexOf(tocElement);
+            if (idxTocs < 0) {
+                console.error("ERROR: " + idxTocs + ": < 0, tocElement not found");
+                process.exit(-1);
+            }
+            tocs[idxTocs] = toc;
+            //tocElement = toc;
+        } else if(!bookConfig.brother){
+            tocs.push(toc);
+        }
+    }
+    tocs = sortWithOrderBook(tocs);
+    section.tocsMapLanguage.set(book.language, tocs);
+}
+
+/*ReadBook: read a book yml file*/
+async function ReadBook(section, bookConfig) {
+    var bookContent = {};
+    // get book
+    if(isPdf(bookConfig.path)) {
+        bookContent = createBookPdf(bookConfig);
+    } else {
         try {
-            var latest = yaml.load(fetchVersion).latest_version;
+            bookContent = yaml.load(fse.readFileSync(bookConfig.localPath));
         } catch (error) {
-            console.log ("ERROR: reading [%s] error=[%s]", version, error);
+            console.error("ERROR: reading [%s] error=[%s]", bookConfig.localPath, error);
             process.exit(1);
         }
     }
 
-    if (argv.verbose) {
-        console.log ("  + FetchConfig = [%s]", fetchconf);
-        console.log ("    + Destination = [%s]", destination);
-    }
-    if (!fs.existsSync(destination)) fse.mkdirsSync(destination);
+    //countNumberOfMarkdown(section, bookContent, bookConfig);
 
-    var global = {
-        url_fetch  : tocConfig.url_fetch,
-        url_edit   : tocConfig.url_edit,
-        git_commit : tocConfig.git_commit || latest || "master",
-        destination: path.join (destination, tocConfig.dst_prefix || ""),
-        src_prefix : tocConfig.src_prefix || ""
-    };
+    /*loop on books*/
+    for (var idxBook in bookContent.books) {
+        //var bookLangs = bookContent.books[idxBook];
+        var order = DEFAULT_ORDER;
+        var book = bookContent.books[idxBook];
+        if (book.order) order = book.order;
+        book.language = config.LANG_DEFAULT;
+        var toc = {
+            name: bookConfig.name ? bookConfig.name : book.title,
+            id: bookConfig.id,
+            orderBook: Number(bookConfig.idNb),
+            order: Number(bookConfig.order ? bookConfig.order : order),
+            children: [],
+        };
+        var dstDir = path.join(config.DOCS_DIR, book.language, section.version, section.name, config.FETCH_DIR);
 
-    if (!tocConfig.repositories) {
-        console.log ("    * WARNING: no repositories defined in %s",fetchconf);
-        return;
-    }
-
-    for  (var idx in tocConfig.repositories) {
-        var repository =  tocConfig.repositories[idx];
-        var repodest;
-
-        for(var idx in overloadConfig) {
-            var overload = overloadConfig[idx];
-            if(repository.git_name) {
-                if(overload.git_name==repository.git_name) {
-                    repository.url_fetch = overload.url_fetch;
-                }
-            }
-        }
-
-
-
-        if (repository.dst_prefix) repodest= path.join (destination, repository.dst_prefix || "");
-        else repodest=global.destination;
-
-        var git_name_src ;
-
-        if (repository.git_name)
-        {
-            git_name_src=repository.git_name.replace ("%project_source%" , config.AGL_SRC);
-        }
-        var repo= {
-            url_fetch  : repository.url_fetch  || global.url_fetch,
-            url_edit   : repository.url_edit   || global.url_edit,
-            git_commit : repository.git_commit || global.git_commit,
-            src_prefix : repository.src_prefix || global.src_prefix,
-            git_name   : git_name_src,
-            destination: repodest,
-            warning    : util.format ("<!-- WARNING: This file is generated by %s using %s -->\n\n", path.basename(__filename),fetchconf)
+        var chapterData = {
+            language: book.language,
+            toc: toc,
+            bookConfig: bookConfig,
+            dstDir: dstDir,
+            tocsMapLanguage: section.tocsMapLanguage,
+            section: section,
+            src_prefix: book.src_prefix,
+            url_edit: book.url_edit || global.url_edit,
         };
 
-        var do_local_copy = false;
-
-        if ( repo.url_fetch === "AGL_GITHUB_FETCH" && argv.localFetch===true){
-            repo.url_fetch= path.join (path.dirname(path.dirname(config.SITE_DIR)), "%source%");
-            do_local_copy=true;
-        } else {
-            // Support url_fetch = local directory in order to allow user to test
-            // changes using local directory / git repo
-            try {
-                if (fs.statSync(repo.url_fetch).isDirectory()) {
-                    repo.url_fetch= path.join (repo.url_fetch, "%source%");
-                    do_local_copy=true;
-                }
-            } catch (err) {}
-
-            if (!do_local_copy) {
-                // get url from config is default formating present in config
-                if (config[repo.url_fetch]) repo.url_fetch = config[repo.url_fetch];
-                do_local_copy=false;
-            }
-        }
-
-        if (config[repo.url_edit])  repo.url_edit  = config[repo.url_edit];
-        if (config[repo.git_name])  repo.git_name  = config[repo.git_name];
-        repo.url_fetch= repo.url_fetch.replace ("%repo%"  , repo.git_name);
-        if (config[repo.git_commit])  repo.git_commit  = config[repo.git_commit];
-        repo.url_fetch= repo.url_fetch.replace ("%commit%", repo.git_commit);
-
-        if (repo.url_edit) {
-            repo.url_edit= repo.url_edit.replace ("%repo%"  , repo.git_name);
-            repo.url_edit= repo.url_edit.replace ("%commit%", repo.git_commit);
-        }
-
-        if (argv.verbose || argv.dumponly) {
-            console.log ("    + Fetching Repo=%s", repo.url_fetch);
-        }
-
-        // if destination directory does not exist create it
-        if (!fs.existsSync(repo.destination)) fse.mkdirsSync(repo.destination);
-        else {
-            if (!argv.force) {
-                console.log ("      * WARNING: use [--force/--clean] to overload Fetchdir [%s]", repo.destination);
-                process.exit(1);
-            } else {
-                console.log ("      * WARNING: overloaded Fetchdir [%s]", repo.destination);
-            }
-        }
-
-        for  (var jdx in repository.documents) {
-            var document = repository.documents[jdx];
-            if (do_local_copy===true) {
-                 localCopy (argv, repo, document);
-            }
-            else {
-                if (argv.dumponly) {
-                   console.log ("      + label=%s src=%s dst=%s", document.label, document.src, document.dst);
-                } else {
-                   downloadEntry (argv, repo, document);
-                }
-            }
-        };
-    };
+        ReadChapters(book.chapters, chapterData);
+        handleTocs(section, bookConfig, book, toc);
+    }
+    //TOFIX: better to do it only at the end
+    GenerateDataTocsAndIndex(section);
 }
 
-function main (conf, argv, nextRequest) {
-    config    = conf;  // make config global
-    getCount  = 0;     // Global writable active Streams
-    errorCount=0;
-    doneCB = nextRequest;
+async function downloadBook(section, bookConfig) {
+    if(isPdf(bookConfig.url)) {
+        ReadBook(section, bookConfig);
+    } else {
+        bookConfig.outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
 
-    // open destination _default.yml file
-    var destdir = path.join (config.DATA_DIR, "tocs");
-    if(!fs.existsSync(destdir)) fse.mkdirsSync(destdir);
+        bookConfig.outFile.on("finish", function () {
+            ReadBook(section, bookConfig);
+        });
+    }
+}
 
-    var tocs = fs.readdirSync(config.TOCS_DIR);
-    for (var item in tocs) {
-        var tocDir   = path.join (config.TOCS_DIR, tocs[item]);
-        var fetchconf= path.join (config.TOCS_DIR, tocs[item], config.FETCH_CONFIG);
-        var version  = path.join (config.TOCS_DIR, tocs[item], config.VERSION_LATEST);
+function isPdf(name) {
+    return name.endsWith(".pdf");
+}
 
-        if (fs.existsSync(fetchconf)) {
-            FetchFiles (argv, tocs[item], fetchconf, version);
-        } else {
-            console.log ("HOOP: Ignore toc=[%s/%s] not readable", tocs[item], config.FETCH_CONFIG);
+function SetUrl(section, sectionContent, bookConfig) {
+    var overloadConfig;
+    if(fse.existsSync(config.FETCH_CONFIG_OVERLOAD)) {
+        overloadConfig = yaml.load(fse.readFileSync(config.FETCH_CONFIG_OVERLOAD));
+    }
+    for (var idx2 in overloadConfig) {
+        var overload = overloadConfig[idx2];
+        if ((bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
+            (bookConfig.id && (overload.id == bookConfig.id))) {
+            bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
+            bookConfig.git_commit = overload.git_commit;
+            if(VERBOSE) console.log("!!!WARNING!!! overload config for %s", overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
         }
     }
 
-    if (argv.verbose) console.log ("  + fetch_docs in progress count=%d", getCount);
-    return true; // do not run nextRequest imediatly
+    var url;
+    if (!bookConfig.git_commit && !sectionContent.git_commit) {
+        bookConfig.git_commit = section.version;
+    } else {
+        bookConfig.git_commit = bookConfig.git_commit || sectionContent.git_commit;
+    }
+    if(bookConfig.git_commit != section.version) {
+        if(VERBOSE) {
+            console.log("!!!WARNING!!! -- " +
+            " git_commit is " + bookConfig.git_commit +
+            " whereas version is " + section.version + "." +
+            " \n\t info [section: " + section.name +
+            " git_name: " + bookConfig.git_name +
+            " id: " + bookConfig.id + "] " );
+        }
+    }
+    if (isPdf(bookConfig.path)) {
+        bookConfig.path = bookConfig.path.replace("%commit%", bookConfig.git_commit);
+        url = bookConfig.path;
+    } else {
+        url = bookConfig.url_fetch || sectionContent.url_fetch;
+        url = url.replace("AGL_GITHUB_FETCH", config.AGL_GITHUB_FETCH);
+        url = url.replace("GITHUB_FETCH", config.GITHUB_FETCH);
+        url = url.replace("GERRIT_FETCH", config.GERRIT_FETCH);
+        url = url.replace("%repo%", bookConfig.git_name);
+        url = url.replace("%commit%", bookConfig.git_commit);
+        url = url.replace("%source%", bookConfig.path);
+        url = url.replace("AGL_GITHUB_BRANCH", config.AGL_GITHUB_BRANCH);
+        url = url.replace("GITHUB_BRANCH", config.GITHUB_BRANCH);
+        url = url.replace("AGL_GERRIT_BRANCH", config.AGL_GERRIT_BRANCH);
+    }
+    return url;
+}
+
+/*FetchBooks: fetch books from remote repos, reading section_<version>.yml*/
+//async function FetchBooks(section, sectionContent, tocsMapLanguage) {
+async function FetchBooks(section, sectionContent) {
+
+    /*for each books*/
+    for (var idx in sectionContent.books) {
+        var bookConfig = sectionContent.books[idx];
+        //append books
+        if (bookConfig.brotherBooks) {
+            bookConfig.brother = bookConfig.id;
+            var appendsectionContent = Object.assign({}, sectionContent);
+            appendsectionContent.books = Object.assign({}, bookConfig.brotherBooks);
+            appendsectionContent.brother = bookConfig.id;
+            FetchBooks(section, appendsectionContent);
+        }
+        if (bookConfig.path) {
+            if(sectionContent.parent) bookConfig.parent = sectionContent.parent;
+            if(bookConfig.books) bookConfig.childBook = true;
+            bookConfig.idNb = idx;
+            bookConfig.nbBooks = sectionContent.books.length;
+
+            bookConfig.url = SetUrl(section, sectionContent, bookConfig);
+            bookConfig.fileName = bookConfig.id + "-" + path.basename(bookConfig.path);
+            bookConfig.localPath = path.join(config.DATA_DIR, "tocs", section.name, section.version, bookConfig.fileName);
+            if(sectionContent.brother) {
+                bookConfig.brother = sectionContent.brother;
+            }
+            downloadBook(section, bookConfig);
+        }
+        //children books
+        if(bookConfig.books) {
+            var subsectionContent = Object.assign({}, sectionContent);
+            subsectionContent.books = Object.assign({}, bookConfig.books);
+            subsectionContent.parent = bookConfig.id;
+            FetchBooks(section, subsectionContent, section.tocsMapLanguage);
+        }
+    }
+}
+
+/*not using sort array nodejs function because
+ * behavior change with 10 items*/
+function sortWithOrder(tab) {
+    var sortedTab = [];
+
+    var iterator = tab.keys();
+    for (let key of iterator) {
+        var entry = tab[key];
+        if(entry.children) {
+            entry.children = sortWithOrder(entry.children);
+        }
+        var idx = sortedTab.findIndex(function(newEntry) {
+            return newEntry.order > entry.order;
+        });
+        idx = idx < 0 ? sortedTab.length : idx;
+        var tmpSortedTab = sortedTab.slice(idx)
+        var sortedTab = sortedTab.slice(0, idx);
+        sortedTab.push(entry);
+        sortedTab = sortedTab.concat(tmpSortedTab);;
+    }
+    return sortedTab;
+}
+
+async function GenerateDataTocsAndIndex(section) {
+    /*generated _toc_<version>_<language>.yml and index.html for each {version, language}*/
+    section.tocsMapLanguage.forEach(function (unsortedValue, key, map) {
+        var value = sortWithOrder(unsortedValue);
+        var output = yaml.dump(value, { indent: 4 });
+        var destTocName = helpers.genTocfileName(key, section.version);
+        var tocsPath = path.join(config.DATA_DIR, "tocs", section.name, destTocName);
+        if (!fse.existsSync(tocsPath)) fse.mkdirsSync(path.dirname(tocsPath));
+        fse.writeFileSync(tocsPath, output);
+
+        var dst = path.join(config.DOCS_DIR, key, section.version, section.name);
+        if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
+        var idxpath = path.join(dst, "index.html");
+        var buf = "---\n";
+        buf += "title: " + section.title + "\n";
+        buf += "---\n\n";
+        buf += "{% include generated_index.html %}\n";
+        fse.writeFileSync(idxpath, buf);
+    });
+}
+
+async function ParseSection(argv, section) {
+    // get section
+    try {
+        var sectionContent = yaml.load(fse.readFileSync(section.file));
+    } catch (error) {
+        console.error("ERROR: reading [%s] error=[%s]", section.file, error);
+        process.exit(1);
+    }
+    section.title = sectionContent.name;
+
+    FetchBooks(section, sectionContent);
+}
+
+function main(conf, argv, nextRequest) {
+    config = conf;  // make config global
+    doneCB = nextRequest;
+    VERBOSE = argv.verbose;
+
+    // open destination _default.yml file
+    var destdir = path.join(config.DATA_DIR, "tocs");
+    if (!fse.existsSync(destdir)) fse.mkdirsSync(destdir);
+
+    var tocs = fse.readdirSync(config.TOCS_DIR);
+    for (var item in tocs) {
+        var tocDir = path.join(config.TOCS_DIR, tocs[item]);
+        var regexSection = /section_(\w+)\.yml/g;
+        var sectionsConf = fse.readdirSync(tocDir);
+        var sectionConfArray;
+        while ((sectionConfArray = regexSection.exec(sectionsConf)) !== null) {
+            var section = {
+                name: tocs[item],
+                nameFile: sectionConfArray[0],
+                path: path.join(config.TOCS_DIR, tocs[item]),
+                file: path.join(config.TOCS_DIR, tocs[item], sectionConfArray[0]),
+                version: sectionConfArray[1],
+                mapNbMarkdown: new Map(),
+                mapNbMarkdownDownloaded: new Map(),
+                tocsMapLanguage: new Map(),
+            };
+            ParseSection(argv, section);
+        }
+    }
 }
 
 module.exports = main;

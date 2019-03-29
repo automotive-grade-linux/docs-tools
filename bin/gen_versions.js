@@ -39,16 +39,10 @@ var LANGUAGE_MAP = {
     "zh-tw": "繁體中文"
 };
 
-function genVersion (argv, config, tocDir, item) {
-
-    var versConf = {};
-    var docsRoot = config.SITE_DIR;
-    var docDir  = path.join(docsRoot, item);
-
-    // go through directory that contains all languages
-    util.listdirsSync(docDir).forEach(function (langId) {
-
-        var langPath     = path.join(docDir, langId);
+function genVersion(argv, config) {
+    var versions = {};
+    util.listdirsSync(config.DOCS_DIR).forEach(function (langId) {
+        var langPath = path.join(config.DOCS_DIR, langId);
         var versionNames = util.listdirsSync(langPath);
 
         // get language ID
@@ -56,48 +50,81 @@ function genVersion (argv, config, tocDir, item) {
         if (langId in LANGUAGE_MAP) {
             langName = LANGUAGE_MAP[langId];
         } else {
-            console.error("Language identifier '" + langId + "' doesn't have an associated name. Update (gen_versions.js) ");
+            console.error("Language identifier '" + langId + "' doesn't have an associated name.");
             process.exit(1);
         }
 
         // set the language name and the versions it has
-        versConf[langId] = {
-            'name':     LANGUAGE_MAP[langId],
+        versions[langId] = {
+            'name': LANGUAGE_MAP[langId],
             'versions': versionNames
         };
     });
-
-    var destPath = path.join (config.DATA_DIR, "tocs", item);
-    if(!fs.existsSync(destPath)) fs.mkdirSync(destPath);
-    
-    var destTocPath = path.join (destPath, config.VERSION_FILE);
-    var output = util.generatedBy(__filename) + '\n' + yaml.dump(versConf, {indent: 4});
-
-    fs.writeFileSync(destTocPath, output);
-    if (argv.verbose) console.log("  + (version) -> " + destTocPath);
+    var output = util.generatedBy(__filename) + "\n";
+    output += yaml.dump(versions, { indent: 4 });
+    fs.writeFileSync(config.DOCS_VERSION_FILE, output);
 }
+//function genVersion (argv, config, tocDir, item) {
+//
+//    var versConf = {};
+//    var docsRoot = config.SITE_DIR;
+//    var docDir  = path.join(docsRoot, item);
+//
+//    // go through directory that contains all languages
+//    util.listdirsSync(docDir).forEach(function (langId) {
+//
+//        var langPath     = path.join(docDir, langId);
+//        var versionNames = util.listdirsSync(langPath);
+//
+//        // get language ID
+//        var langName;
+//        if (langId in LANGUAGE_MAP) {
+//            langName = LANGUAGE_MAP[langId];
+//        } else {
+//            console.error("Language identifier '" + langId + "' doesn't have an associated name. Update (gen_versions.js) ");
+//            process.exit(1);
+//        }
+//
+//        // set the language name and the versions it has
+//        versConf[langId] = {
+//            'name':     LANGUAGE_MAP[langId],
+//            'versions': versionNames
+//        };
+//    });
+//
+//    var destPath = path.join (config.DATA_DIR, "tocs", item);
+//    if(!fs.existsSync(destPath)) fs.mkdirSync(destPath);
+//
+//    var destTocPath = path.join (destPath, config.VERSION_FILE);
+//    var output = util.generatedBy(__filename) + '\n' + yaml.dump(versConf, {indent: 4});
+//
+//    fs.writeFileSync(destTocPath, output);
+//    if (argv.verbose) console.log("  + (version) -> " + destTocPath);
+//}
 
 function main (config, argv) {
-    
+
     // open destination _default.yml file
     var destdir = path.join (config.DATA_DIR, "tocs");
     if(!fs.existsSync(destdir)) fs.mkdirSync(destdir);
-    
+
     var version= "latest_docs_version: " + config.VER_CURRENT;
     var outfile= path.join (config.CONFIG_DIR, config.VERSION_RELEASE);
     fs.writeFileSync(outfile, version + '\n');
     if (argv.verbose) console.log("  + (release) -> %s", outfile);
-    
+
     var tocs = fs.readdirSync(config.TOCS_DIR);
     for (var item in tocs) {
         var tocDir  = path.join (config.TOCS_DIR, tocs[item]);
         var verFile = path.join (config.TOCS_DIR, tocs[item], config.VERSION_LATEST);
-        
-        if (fs.existsSync(verFile)) {
-            genVersion (argv, config, tocDir, tocs[item]);
-        }
+
+        //if (fs.existsSync(verFile)) {
+        //    genVersion (argv, config, tocDir, tocs[item]);
+        //}
     }
-    
+
+    genVersion(argv, config);
+
     if (argv.verbose) console.log ("  + fetch_versions done");
 
 }
