@@ -599,6 +599,15 @@ async function GenerateDataTocsAndIndex(section) {
     });
 }
 
+function setIndexUnderConstruction(section) {
+        var underConstructionHtml = path.join(config.SITE_DIR, "under-construction.html");
+        var dst = path.join(config.DOCS_DIR, config.LANG_DEFAULT, section.version, section.name);
+
+        if (!fse.existsSync(dst)) fse.mkdirsSync(dst);
+        dst = path.join(dst, "index.html")
+        fse.createReadStream(underConstructionHtml).pipe(fse.createWriteStream(dst));
+}
+
 async function ParseSection(argv, section) {
     // get section
     try {
@@ -609,7 +618,11 @@ async function ParseSection(argv, section) {
     }
     section.title = sectionContent.name;
 
-    FetchBooks(section, sectionContent);
+    if(sectionContent.books)
+        FetchBooks(section, sectionContent);
+    else {
+        setIndexUnderConstruction(section);
+    }
 }
 
 function main(conf, argv, nextRequest) {
