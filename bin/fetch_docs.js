@@ -32,10 +32,13 @@ async function parseMarkdown(contents, url, pathMd) {
 
     var regexArr = [
         // Match reference   ![make-units](pictures/make-units.svg)
-        /\[.*\]\((.*\.(jpg|png|pdf|svg)).*\)/ig,
+        /\[.*\]\((.*\.(?:jpg|png|pdf|svg)).*\)/igm,
 
         // Match reference   [afm-daemons]: pictures/afm-daemons.svg
-        /\[.*\]: *(.*\.(jpg|png|pdf|svg))/ig,
+        /\[.*\]: *(.*\.(?:jpg|png|pdf|svg))/igm,
+
+        // Match reference <img alt="alt" \n src="pictures/image.png" \n width=12>
+        /<img (?:\w+=".+"\s*)*src="(.+)"\s*(?:\w+=".+"\s*)*>/igm,
     ];
 
     regexArr.forEach(function(rx) {
