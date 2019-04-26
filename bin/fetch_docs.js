@@ -162,7 +162,7 @@ async function ReadChapters(chapters, chapterData) {
             if(isPdf(chapter.url)) {
                 url = chapter.url;
             } else {
-                url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.url), chapter.url);
+                url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.path), chapter.url);
             }
             dst = path.join(dst, dstFilename);
 
