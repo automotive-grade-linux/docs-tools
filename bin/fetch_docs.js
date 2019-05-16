@@ -477,11 +477,18 @@ function SetUrl(section, sectionContent, bookConfig) {
     }
     for (var idx2 in overloadConfig) {
         var overload = overloadConfig[idx2];
-        if ((bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
-            (bookConfig.id && (overload.id == bookConfig.id))) {
-            bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
-            bookConfig.git_commit = overload.git_commit;
-            if(VERBOSE) console.log("!!!WARNING!!! overload config for %s", overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
+        if(!overload.version) {
+            console.error("ERROR: no version in local fetch file for %s", overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
+            process.exit(1);
+        } else {
+            if(overload.version == section.version) {
+                if ((bookConfig.git_name && (overload.git_name == bookConfig.git_name)) ||
+                    (bookConfig.id && (overload.id == bookConfig.id))) {
+                    bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
+                    bookConfig.git_commit = overload.git_commit;
+                    if(VERBOSE) console.log("!!!WARNING!!! overload config for version: %s %s", overload.version, overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
+                }
+            }
         }
     }
 
