@@ -486,7 +486,7 @@ function SetUrl(section, sectionContent, bookConfig) {
                     (bookConfig.id && (overload.id == bookConfig.id))) {
                     bookConfig.url_fetch = path.join(overload.url_fetch, "%source%");
                     bookConfig.git_commit = overload.git_commit;
-                    if(VERBOSE) console.log("!!!WARNING!!! overload config for version: %s %s", overload.version, overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
+                    console.log("!!!INFO!!! overload config for version: %s %s", overload.version, overload.git_name ? "git_name: " + overload.git_name : "id: " + overload.id);
                 }
             }
         }
@@ -499,7 +499,6 @@ function SetUrl(section, sectionContent, bookConfig) {
         bookConfig.git_commit = bookConfig.git_commit || sectionContent.git_commit;
     }
     if(bookConfig.git_commit != section.version) {
-        if(VERBOSE) {
             console.log("!!!WARNING!!! -- " +
             " git_commit is " + bookConfig.git_commit +
             " whereas version is " + section.version + "." +
@@ -507,7 +506,6 @@ function SetUrl(section, sectionContent, bookConfig) {
             " git_name: " + bookConfig.git_name +
             " id: " + bookConfig.id + "] " );
         }
-    }
     if (isPdf(bookConfig.path)) {
         bookConfig.path = bookConfig.path.replace("%commit%", bookConfig.git_commit);
         url = bookConfig.path;
