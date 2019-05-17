@@ -195,6 +195,11 @@ async function ReadChapters(chapters, chapterData) {
                 origin_url: url,
             };
 
+            // Handle case of overloaded repos by local repos using __fetched_files_local.yml
+            if (!url.startsWith('http')) {
+                newFrontMatter.origin_url = 'file://' + newFrontMatter.origin_url;
+            }
+
             var newUrl;
             if(url.endsWith(".pdf")) {
                 downloadFile(url, dst, false, "");
@@ -499,13 +504,13 @@ function SetUrl(section, sectionContent, bookConfig) {
         bookConfig.git_commit = bookConfig.git_commit || sectionContent.git_commit;
     }
     if(bookConfig.git_commit != section.version) {
-            console.log("!!!WARNING!!! -- " +
-            " git_commit is " + bookConfig.git_commit +
-            " whereas version is " + section.version + "." +
-            " \n\t info [section: " + section.name +
-            " git_name: " + bookConfig.git_name +
-            " id: " + bookConfig.id + "] " );
-        }
+        console.log("!!!WARNING!!! -- " +
+        " git_commit is " + bookConfig.git_commit +
+        " whereas version is " + section.version + "." +
+        " \n\t info [section: " + section.name +
+        " git_name: " + bookConfig.git_name +
+        " id: " + bookConfig.id + "] " );
+    }
     if (isPdf(bookConfig.path)) {
         bookConfig.path = bookConfig.path.replace("%commit%", bookConfig.git_commit);
         url = bookConfig.path;
