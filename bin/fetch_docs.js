@@ -49,7 +49,7 @@ async function parseMarkdown(contents, url, pathMd) {
             if (!image.startsWith("http")) {
                 var imageUrl = url.replace(path.basename(pathMd), image);
                 var imageDst = path.join(path.dirname(pathMd), image);
-                downloadFile(imageUrl, imageDst, false);
+                downloadFile(imageUrl, imageDst, imageDst, false);
             }
         }
     });
@@ -63,7 +63,7 @@ function setFrontMatter(fetchconf, frontMatter, options) {
     return helpers.setFrontMatterString(text, frontMatterString);
 }
 
-function handleResponse(url, dst, isTextFile, frontMatter, response, outFile) {
+function handleResponse(url, dst, orgDst, isTextFile, frontMatter, response, outFile) {
     if (isTextFile) response.setEncoding('utf8');
     else response.setEncoding('binary');
 
@@ -76,7 +76,7 @@ function handleResponse(url, dst, isTextFile, frontMatter, response, outFile) {
     response.on('end', function () {
         //parse data to get images
         if (isTextFile) {
-            parseMarkdown(fileContents, url, dst);
+            parseMarkdown(fileContents, url, orgDst);
             outFile.end(fileContents);
         }
         else outFile.end(fileContents, 'binary');
@@ -84,13 +84,13 @@ function handleResponse(url, dst, isTextFile, frontMatter, response, outFile) {
 }
 
 /*download file*/
-function downloadFile(url, dst, isTextFile, frontMatter) {
+function downloadFile(url, dst, orgDst, isTextFile, frontMatter) {
     if (!fse.existsSync(path.dirname(dst))) { fse.mkdirsSync(path.dirname(dst)); }
     var outFile = fse.createWriteStream(dst);
 
     if (fse.existsSync(url)) { //local fetch
         var inFile = fse.createReadStream(url);
-        handleResponse(url, dst, isTextFile, frontMatter, inFile, outFile);
+        handleResponse(url, dst, orgDst, isTextFile, frontMatter, inFile, outFile);
         outFile.on('finish', function () {
             if (VERBOSE) console.log(" --- Local Fetch " + dst + " done");
         });
@@ -109,7 +109,7 @@ function downloadFile(url, dst, isTextFile, frontMatter) {
                 console.error("ERROR: " + url + ": got %s", response.statusCode);
                 return;
             }
-            handleResponse(url, dst, isTextFile, frontMatter, response, outFile);
+            handleResponse(url, dst, orgDst, isTextFile, frontMatter, response, outFile);
             outFile.on('finish', function () {
                 if (VERBOSE) console.log(" --- Fetch " + dst + " done");
             });
@@ -155,16 +155,17 @@ async function ReadChapters(chapters, chapterData) {
             }
 
             // destination : allow to rename markdown filename in website
+            var orgDst = path.join(dst, dstFilename);
             if (chapter.destination && chapter.destination != "") {
                 dstFilename = chapter.destination;
             }
+            dst = path.join(dst, dstFilename);
 
             if(isPdf(chapter.url)) {
                 url = chapter.url;
             } else {
                 url = chapterData.bookConfig.url.replace(path.basename(chapterData.bookConfig.path), chapter.url);
             }
-            dst = path.join(dst, dstFilename);
 
             if (fse.existsSync(dst)) {
                 console.error("ERROR destination file already exists :");
@@ -202,10 +203,10 @@ async function ReadChapters(chapters, chapterData) {
 
             var newUrl;
             if(url.endsWith(".pdf")) {
-                downloadFile(url, dst, false, "");
+                downloadFile(url, dst, orgDst, false, "");
                 newUrl = path.join("reference", path.relative(chapterData.dstDir, dst));
             }else {
-                downloadFile(url, dst, true, setFrontMatter(chapterData.bookConfig.localPath, newFrontMatter));
+                downloadFile(url, dst, orgDst, true, setFrontMatter(chapterData.bookConfig.localPath, newFrontMatter));
                 newUrl = path.join("reference", path.relative(chapterData.dstDir, dst)).replace(".md", ".html");
             }
 
@@ -463,7 +464,7 @@ async function downloadBook(section, bookConfig) {
     if(isPdf(bookConfig.url)) {
         ReadBook(section, bookConfig);
     } else {
-        bookConfig.outFile = downloadFile(bookConfig.url, bookConfig.localPath, true);
+        bookConfig.outFile = downloadFile(bookConfig.url, bookConfig.localPath, bookConfig.localPath, true);
 
         bookConfig.outFile.on("finish", function () {
             ReadBook(section, bookConfig);
