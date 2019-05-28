@@ -19,29 +19,43 @@
 
 var crawler    = require("simplecrawler");
 
-function main (config, argv) {   
-    
+function main (config, argv) {
+
     var uri;
-console.log("*********************", config.CRAWL_DEV); 
+
     if (argv.prod) uri=config.CRAWL_PROD;
     else uri=uri=config.CRAWL_DEV;
-    
+
     if (!uri) {
         console.log ("ERROR: CRAWL_DEV/PROD not defined in AppConfig.js");
         process.exit(1);
     }
-    
+
+    var nb404 = 0;
+    var nbFetchErr = 0;
     crawler
         .crawl(uri)
         .on("fetch404", function(queueItem, response) {
-            console.log("Status:%s from %s to %s", response.statusCode, queueItem.referrer, queueItem.path);
+            // Ignore local javascript files
+            if (String(queueItem.path).startsWith('/static/js') || String(queueItem.path).startsWith('/static/img')) {
+                return;
+            }
+
+            console.log("Error %s: from %s to %s", response.statusCode, queueItem.referrer, queueItem.path);
+            nb404 += 1;
         })
         .on("fetchclienterror", function(queueItem) {
-            console.log("ERROR: crawler site=[%s]", uri);
-            process.exit (1);
+            if (argv.verbose) console.log("Error fetch: url=%s, referrer=%s", queueItem.url, queueItem.referrer);
+            nbFetchErr += 1;
+            //process.exit (1);
         })
         .on("complete", function(queueItem) {
-           if (argv.verbose) console.log ("  + crawler done"); 
+           if (argv.verbose) console.log ("\n\nCrawler done");
+           if (nb404 != 0) console.log("  %d not found errors (aka 404) detected !", nb404);
+           if (nbFetchErr != 0) console.log("  %d fetch errors detected !", nbFetchErr);
+           if (nb404 != 0 || nbFetchErr != 0) {
+               process.exit(1);
+           }
         });
 }
 
