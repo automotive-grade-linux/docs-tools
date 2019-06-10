@@ -353,7 +353,7 @@ function handleTocs(section, bookConfig, book, toc) {
             if(bookConfig.id == bookConfig.brother) {
                 toc.offset = toc.children.length;
                 setOrderBookForBrothers(tocBrother.children, toc.offset);
-                toc.children = toc.children.concat(tocBrother.children);
+                toc.children = sortWithOrderBook(toc.children.concat(tocBrother.children));
                 var idxBrother = tocs.indexOf(tocBrother);
                 if (idxBrother < 0) {
                     console.error("ERROR: " + idxTocs + ": < 0, tocBrother not found");
@@ -362,10 +362,12 @@ function handleTocs(section, bookConfig, book, toc) {
                 tocs[idxBrother] = toc;
             } else {
                 setOrderBookForBrothers(toc.children, tocBrother.offset);
-                tocBrother.children = tocBrother.children.concat(toc.children);
+                tocBrother.children = sortWithOrderBook(tocBrother.children.concat(toc.children));
             }
         } else {
             toc.offset = 0;
+            if(bookConfig.id == bookConfig.brother)
+                toc.offset = toc.children.length;
             tocs.push(toc);
         }
     }
