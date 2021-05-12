@@ -1,3 +1,10 @@
+
+**THIS REPO IS DEPRECATED.**
+
+The new location is https://gitlab.com/automotivegradelinux
+
+
+
 Introduction
 ============
 
